@@ -168,11 +168,16 @@ describe('FriendsService', () => {
     expect(result.items).toEqual([]);
     expect(result.paging).toEqual({
       page: 1,
-      limit: 10,
+      size: 10,
       total: 0,
-      totalPages: 0,
-      hasNext: false,
-      hasPrev: false,
     });
+    expect(result.summary).toEqual({
+      total: 0,
+      stale: false, // true 또는 false
+    });
+
+    // ✅ links와 trace_id 존재 확인
+    expect(result.links).toBeDefined();
+    expect(result.trace_id).toBeDefined();
   });
 });
