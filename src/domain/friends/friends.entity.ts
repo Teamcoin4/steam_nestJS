@@ -18,10 +18,10 @@ export enum FriendStatus {
 @Entity('friends')
 export class Friend {
   @PrimaryGeneratedColumn()
-  id!: number; // ! 추가
+  id!: number;
 
   @Column()
-  userId!: number; // ! 추가
+  userId!: number;
 
   @Column({
     type: 'bigint',
