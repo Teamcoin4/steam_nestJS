@@ -1,3 +1,4 @@
+// src/myfriends/friends.controller.ts
 import {
   Controller,
   Get,
@@ -8,8 +9,13 @@ import {
   Delete,
   Param,
   ParseIntPipe,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { FriendsService } from './friends.service';
+import { User } from '../domain/users/user.entity';
 import { UserId } from '../auth/user-id.decorator';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -23,15 +29,27 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 @UseGuards(JwtAuthGuard)
 @Controller('friends')
 export class FriendsController {
-  constructor(private readonly friendsService: FriendsService) {}
+  constructor(
+    private readonly friendsService: FriendsService,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
 
   // ✅ 1. 업적 비교 (가장 구체적인 경로가 먼저)
   @Get(':steamid/games/:gameid/achievements/compare')
   @UseGuards(ThrottlerGuard)
   async getAchievementCompare(
     @UserId() userId: string,
-    @Param('steamid', ParseIntPipe) friendId: number,
-    @Param('gameid', ParseIntPipe) gameId: number,
+    @Param('steamid') friendSteamId: string,
+    @Param(
+      'gameid',
+      new ParseIntPipe({
+        errorHttpStatusCode: 400,
+        exceptionFactory: () =>
+          new BadRequestException('gameId must be a positive integer'),
+      }),
+    )
+    gameId: number,
     @Query(
       new ValidationPipe({
         transform: true,
@@ -43,10 +61,25 @@ export class FriendsController {
     )
     query: GetAchievementCompareDto,
   ) {
+    // gameId 검증 추가
+    if (gameId <= 0) {
+      throw new BadRequestException('gameId must be a positive integer');
+    }
+
     const userIdNum = parseInt(userId, 10);
+
+    const friendUser = await this.userRepository.findOne({
+      where: { steamId: friendSteamId },
+      select: ['id'],
+    });
+
+    if (!friendUser) {
+      throw new NotFoundException('친구를 찾을 수 없습니다.');
+    }
+
     return this.friendsService.getAchievementCompare(
       userIdNum,
-      friendId,
+      friendUser.id,
       gameId,
       query,
     );
@@ -55,9 +88,9 @@ export class FriendsController {
   // ✅ 2. 공통 게임 조회
   @Get(':steamid/common-games')
   @UseGuards(ThrottlerGuard)
-  getCommonGames(
+  async getCommonGames(
     @UserId() userId: string,
-    @Param('steamid', ParseIntPipe) friendId: number,
+    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
     @Query(
       new ValidationPipe({
         transform: true,
@@ -70,7 +103,18 @@ export class FriendsController {
     query: GetCommonGamesDto,
   ) {
     const userIdNum = parseInt(userId, 10);
-    return this.friendsService.getCommonGames(userIdNum, friendId, query);
+
+    // steamId로 User 조회
+    const friendUser = await this.userRepository.findOne({
+      where: { steamId: friendSteamId },
+      select: ['id'],
+    });
+
+    if (!friendUser) {
+      throw new NotFoundException('친구를 찾을 수 없습니다.');
+    }
+
+    return this.friendsService.getCommonGames(userIdNum, friendUser.id, query);
   }
 
   // ✅ 3. 친구 상태 확인
@@ -78,10 +122,21 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async getFriendStatus(
     @UserId() userId: string,
-    @Param('steamid', ParseIntPipe) friendId: number,
+    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
   ) {
     const userIdNum = parseInt(userId, 10);
-    return this.friendsService.getFriendStatus(userIdNum, friendId);
+
+    // steamId로 User 조회
+    const friendUser = await this.userRepository.findOne({
+      where: { steamId: friendSteamId },
+      select: ['id'],
+    });
+
+    if (!friendUser) {
+      throw new NotFoundException('친구를 찾을 수 없습니다.');
+    }
+
+    return this.friendsService.getFriendStatus(userIdNum, friendUser.id);
   }
 
   // ✅ 4. 친구 목록 조회 (동적 경로보다 나중에)
@@ -109,10 +164,21 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async addFriend(
     @UserId() userId: string,
-    @Param('steamid', ParseIntPipe) friendId: number,
+    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
   ) {
     const userIdNum = parseInt(userId, 10);
-    return this.friendsService.addFriend(userIdNum, friendId);
+
+    // steamId로 User 조회
+    const friendUser = await this.userRepository.findOne({
+      where: { steamId: friendSteamId },
+      select: ['id'],
+    });
+
+    if (!friendUser) {
+      throw new NotFoundException('친구를 찾을 수 없습니다.');
+    }
+
+    return this.friendsService.addFriend(userIdNum, friendUser.id);
   }
 
   // ✅ 6. 친구 요청 승인
@@ -120,10 +186,21 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async acceptFriend(
     @UserId() userId: string,
-    @Param('steamid', ParseIntPipe) friendId: number,
+    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
   ) {
     const userIdNum = parseInt(userId, 10);
-    return this.friendsService.acceptFriend(userIdNum, friendId);
+
+    // steamId로 User 조회
+    const friendUser = await this.userRepository.findOne({
+      where: { steamId: friendSteamId },
+      select: ['id'],
+    });
+
+    if (!friendUser) {
+      throw new NotFoundException('친구를 찾을 수 없습니다.');
+    }
+
+    return this.friendsService.acceptFriend(userIdNum, friendUser.id);
   }
 
   // ✅ 7. 친구 삭제
@@ -131,10 +208,21 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async removeFriend(
     @UserId() userId: string,
-    @Param('steamid', ParseIntPipe) friendId: number,
+    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
   ) {
     const userIdNum = parseInt(userId, 10);
-    return this.friendsService.removeFriend(userIdNum, friendId);
+
+    // steamId로 User 조회
+    const friendUser = await this.userRepository.findOne({
+      where: { steamId: friendSteamId },
+      select: ['id'],
+    });
+
+    if (!friendUser) {
+      throw new NotFoundException('친구를 찾을 수 없습니다.');
+    }
+
+    return this.friendsService.removeFriend(userIdNum, friendUser.id);
   }
 
   // ✅ 8. 친구 차단
@@ -142,9 +230,20 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async blockFriend(
     @UserId() userId: string,
-    @Param('steamid', ParseIntPipe) friendId: number,
+    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
   ) {
     const userIdNum = parseInt(userId, 10);
-    return this.friendsService.blockFriend(userIdNum, friendId);
+
+    // steamId로 User 조회
+    const friendUser = await this.userRepository.findOne({
+      where: { steamId: friendSteamId },
+      select: ['id'],
+    });
+
+    if (!friendUser) {
+      throw new NotFoundException('친구를 찾을 수 없습니다.');
+    }
+
+    return this.friendsService.blockFriend(userIdNum, friendUser.id);
   }
 }

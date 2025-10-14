@@ -116,7 +116,7 @@ describe('FriendsService', () => {
   it('should return empty friend list', async () => {
     const dto = new GetFriendsDto();
     dto.page = 1;
-    dto.limit = 10;
+    dto.size = 10;
 
     (friendRepository.createQueryBuilder as jest.Mock).mockReturnValue({
       where: jest.fn().mockReturnThis(),
@@ -130,8 +130,8 @@ describe('FriendsService', () => {
 
     const result = await service.getFriends(1, dto);
 
-    expect(result.data).toEqual([]);
-    expect(result.meta).toEqual({
+    expect(result.items).toEqual([]);
+    expect(result.paging).toEqual({
       page: 1,
       limit: 10,
       total: 0,

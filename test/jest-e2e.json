@@ -14,5 +14,9 @@
   "moduleNameMapper": {
     "^src/(.*)$": "<rootDir>/src/$1"
   },
-  "moduleDirectories": ["node_modules", "<rootDir>"]
+  "moduleDirectories": ["node_modules", "<rootDir>"],
+  "setupFilesAfterEnv": ["<rootDir>/test/setup.ts"],
+  "transformIgnorePatterns": [
+    "/node_modules/(?!(uuid)/)"
+  ]
 }
