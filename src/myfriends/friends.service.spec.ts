@@ -116,7 +116,17 @@ describe('FriendsService', () => {
   it('should return empty friend list', async () => {
     const dto = new GetFriendsDto();
     dto.page = 1;
-    dto.size = 10;
+    dto.size = 10; // limit → size
+
+    // ✅ User Mock 추가
+    const mockUser = {
+      id: 1,
+      steamid: '76561198000000000',
+      persona_name: 'Test User',
+      // ... 필요한 다른 필드들
+    };
+
+    (userRepository.findOne as jest.Mock).mockResolvedValue(mockUser);
 
     (friendRepository.createQueryBuilder as jest.Mock).mockReturnValue({
       where: jest.fn().mockReturnThis(),
