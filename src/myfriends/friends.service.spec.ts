@@ -28,16 +28,40 @@ describe('FriendsService', () => {
   let steamService: jest.Mocked<Partial<SteamService>>;
 
   beforeEach(async () => {
+    // 👇 이 부분을 완전히 교체
     const mockFriendQueryBuilder = {
+      // SELECT 관련
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+
+      // JOIN 관련
+      leftJoin: jest.fn().mockReturnThis(),
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
+      innerJoinAndSelect: jest.fn().mockReturnThis(),
+
+      // WHERE 관련
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
+      orWhere: jest.fn().mockReturnThis(),
+
+      // ORDER/GROUP 관련
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+
+      // PAGINATION 관련
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
-      getMany: jest.fn().mockResolvedValue([]),
-      getCount: jest.fn().mockResolvedValue(0),
-    } as unknown as SelectQueryBuilder<Friend>;
+      limit: jest.fn().mockReturnThis(),
+      offset: jest.fn().mockReturnThis(),
 
+      // 실행 메서드
+      getMany: jest.fn().mockResolvedValue([]),
+      getOne: jest.fn().mockResolvedValue(null),
+      getCount: jest.fn().mockResolvedValue(0),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    } as unknown as SelectQueryBuilder<Friend>;
     friendRepository = {
       findOne: jest.fn(),
       find: jest.fn(),
@@ -116,9 +140,20 @@ describe('FriendsService', () => {
   it('should return empty friend list', async () => {
     const dto = new GetFriendsDto();
     dto.page = 1;
-    dto.limit = 10;
+    dto.size = 10; // limit → size
+
+    // ✅ User Mock 추가
+    const mockUser = {
+      id: 1,
+      steamid: '76561198000000000',
+      persona_name: 'Test User',
+      // ... 필요한 다른 필드들
+    };
+
+    (userRepository.findOne as jest.Mock).mockResolvedValue(mockUser);
 
     (friendRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
@@ -130,14 +165,19 @@ describe('FriendsService', () => {
 
     const result = await service.getFriends(1, dto);
 
-    expect(result.data).toEqual([]);
-    expect(result.meta).toEqual({
+    expect(result.items).toEqual([]);
+    expect(result.paging).toEqual({
       page: 1,
-      limit: 10,
+      size: 10,
       total: 0,
-      totalPages: 0,
-      hasNext: false,
-      hasPrev: false,
     });
+    expect(result.summary).toEqual({
+      total: 0,
+      stale: false, // true 또는 false
+    });
+
+    // ✅ links와 trace_id 존재 확인
+    expect(result.links).toBeDefined();
+    expect(result.trace_id).toBeDefined();
   });
 });
