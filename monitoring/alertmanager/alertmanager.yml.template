@@ -1,0 +1,36 @@
+# AlertManager Configuration Template
+# 
+# Setup Instructions:
+# 1. Copy this file: cp alertmanager.yml.template alertmanager.yml
+# 2. Replace YOUR_SLACK_WEBHOOK_URL_HERE with your actual Slack Webhook URL
+# 3. Get Webhook URL from: https://api.slack.com/messaging/webhooks
+# 4. alertmanager.yml is excluded from git for security
+
+global:
+  resolve_timeout: 5m
+  slack_api_url: 'YOUR_SLACK_WEBHOOK_URL_HERE'
+
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'slack-notifications'
+
+receivers:
+  - name: 'slack-notifications'
+    slack_configs:
+      - channel: '#alerts'
+        title: '{{ .GroupLabels.alertname }}'
+        text: |
+          *Summary:* {{ .CommonAnnotations.summary }}
+          *Description:* {{ .CommonAnnotations.description }}
+          *Severity:* {{ .CommonLabels.severity }}
+        send_resolved: true
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'dev', 'instance']

@@ -59,4 +59,18 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # 양경석 개인 메모
 .memo.txt
 
+<<<<<<< Updated upstream
 sql
+=======
+sql
+
+# Monitoring data (Docker volumes)
+monitoring/prometheus/data/
+monitoring/grafana/data/
+monitoring/loki/data/
+monitoring/tempo/data/
+monitoring/alertmanager/data/
+
+# Monitoring config with secrets
+monitoring/alertmanager/alertmanager.yml
+>>>>>>> Stashed changes
