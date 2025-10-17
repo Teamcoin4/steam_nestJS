@@ -9,7 +9,19 @@ describe('AppController', () => {
   beforeEach(async () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService, MetricsService], // MetricsService 추가
+      providers: [
+        AppService,
+        {
+          provide: MetricsService,
+          useValue: {
+            incrementCounter: jest.fn(),
+            recordDuration: jest.fn(),
+            incrementActiveConnections: jest.fn(),
+            decrementActiveConnections: jest.fn(),
+            incrementErrors: jest.fn(),
+          },
+        },
+      ],
     }).compile();
 
     appController = app.get<AppController>(AppController);
