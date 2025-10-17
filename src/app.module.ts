@@ -31,6 +31,11 @@ import { FriendsModule } from './domain/friends/friends.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AchievementModule } from './achievement/achievement.module';
 
+// Monitoring Modules - 추가
+import { LoggerModule } from './common/logger/logger.module';
+import { MetricsModule } from './common/metrics/metrics.module';
+import { MetricsInterceptor } from './common/metrics/metrics.interceptor';
+
 // Entities
 import { OwnedGame } from './domain/games/owned-game.entity';
 import { Game } from './domain/games/game.entity';
@@ -95,6 +100,10 @@ import { Friend } from './domain/friends/friends.entity';
         }),
       }),
     }),
+    // Monitoring Modules - 추가
+    LoggerModule,
+    MetricsModule,
+
     SteamModule,
     AuthModule,
     MeModule,
@@ -119,6 +128,7 @@ import { Friend } from './domain/friends/friends.entity';
     DashboardService,
     userAchievementService,
     { provide: APP_INTERCEPTOR, useClass: EtagInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor }, // 추가
   ],
 })
 export class AppModule {}
