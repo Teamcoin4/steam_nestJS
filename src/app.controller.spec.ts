@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { MetricsService } from './common/metrics/metrics.service'; // 실제 경로에 맞게 수정
+import { MetricsService } from './common/metrics/metrics.service';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -14,6 +14,7 @@ describe('AppController', () => {
         {
           provide: MetricsService,
           useValue: {
+            incrementHttpRequests: jest.fn(),
             incrementCounter: jest.fn(),
             recordDuration: jest.fn(),
             incrementActiveConnections: jest.fn(),
