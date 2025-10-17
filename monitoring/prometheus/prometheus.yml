@@ -25,7 +25,7 @@ scrape_configs:
 
   # NestJS 애플리케이션
   - job_name: 'nestjs-app'
-    metrics_path: '/metrics'
+    metrics_path: '/api/v1/metrics'
     static_configs:
       - targets: ['host.docker.internal:3001']
         labels:

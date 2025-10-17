@@ -60,3 +60,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .memo.txt
 
 sql
+
+# Monitoring data (Docker volumes)
+monitoring/tempo-data/
+monitoring/prometheus-data/
+monitoring/loki-data/
+monitoring/grafana-data/
