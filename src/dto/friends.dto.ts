@@ -3,8 +3,8 @@
 export class FriendDto {
   id!: number;
   userId!: number;
-  friendId!: number;
-  friend_since?: Date;
+  friendId!: string;
+  friend_since?: Date | null;
   created_at!: Date;
   updated_at!: Date;
 }

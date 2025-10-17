@@ -3,7 +3,12 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 
-type AccessPayload = { sub: number; typ?: string; steamId?: string };
+type AccessPayload = {
+  sub?: number;
+  id?: number;
+  typ?: string;
+  steamId?: string;
+};
 
 @Injectable()
 export class JwtAccessStrategy extends PassportStrategy(
@@ -23,13 +28,30 @@ export class JwtAccessStrategy extends PassportStrategy(
     );
   }
 
+  // 아래 부분들이 수정되었음
   validate(payload: AccessPayload) {
-    if (
-      !Number.isSafeInteger(payload.sub) ||
-      (payload.typ && payload.typ !== 'access')
-    )
-      throw new UnauthorizedException('Invalid accessToken');
+    const userId =
+      typeof payload.sub === 'number'
+        ? payload.sub
+        : typeof payload.id === 'number'
+          ? payload.id
+          : undefined;
 
-    return { userId: payload.sub, steamId: payload.steamId };
+    if (!userId || (payload.typ && payload.typ !== 'access')) {
+      throw new UnauthorizedException('Invalid accessToken');
+    }
+    return { id: userId, steamId: payload.steamId };
   }
 }
+
+// 기존코드
+//   validate(payload: AccessPayload) {
+//     if (
+//       !Number.isSafeInteger(payload.sub) ||
+//       (payload.typ && payload.typ !== 'access')
+//     )
+//       throw new UnauthorizedException('Invalid accessToken');
+
+//     return { userId: payload.sub, steamId: payload.steamId };
+//   }
+// }
