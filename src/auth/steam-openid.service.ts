@@ -1,17 +1,21 @@
-import { Inject, Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  UnauthorizedException,
+  Inject,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import type Redis from 'ioredis';
-import { REDIS } from '../infra/redis/redis.constants';
+import { CacheAsideService } from '../common/cache/cache-aside.service';
 import { randomBytes, createHash } from 'crypto';
 import { errorSummary } from 'src/common/error.util';
 import { JwtService } from '@nestjs/jwt';
-import { UsersRepository } from 'src/domain/users/users.repository';
+import { UsersRepository } from '../domain/users/users.repository';
 import { User } from 'src/domain/users/user.entity';
-import { UnauthorizedException } from '@nestjs/common';
-import { CacheAsideService } from 'src/common/cache/cache-aside.service';
 import { myGamesIdx, profileIdx } from 'src/common/cache/keys';
-import { OwnedGameRepository } from 'src/domain/games/owned-game.repository';
+import { OwnedGameRepository } from '../domain/games/owned-game.repository';
+import { REDIS } from 'src/infra/redis/redis.constants';
 
 const OP = 'https://steamcommunity.com/openid/login';
 
@@ -52,11 +56,11 @@ export class SteamOpenIdService {
 
   constructor(
     private readonly cfg: ConfigService,
-    @Inject(REDIS) private readonly redis: Redis,
     private readonly jwt: JwtService,
     private readonly usersRepo: UsersRepository,
     private readonly ownedRepo: OwnedGameRepository,
     private readonly cache: CacheAsideService,
+    @Inject(REDIS) private readonly redis: Redis, // ← 주입
   ) {
     this.realm = this.cfg.getOrThrow<string>('STEAM_REALM');
     this.returnTo = this.cfg.getOrThrow<string>('STEAM_RETURN_TO');
@@ -77,7 +81,6 @@ export class SteamOpenIdService {
     const state = randomBytes(16).toString('hex');
     const nonce = randomBytes(16).toString('hex');
 
-    // 10분 TTL
     const replies = (await this.redis
       .multi()
       .set(`oid:state:${state}`, '1', 'EX', 600, 'NX')
@@ -88,11 +91,9 @@ export class SteamOpenIdService {
 
     const ok1 = replies[0][1] === 'OK';
     const ok2 = replies[1][1] === 'OK';
-
     if (!ok1 || !ok2)
       throw new BadRequestException('failed to save state/nonce');
 
-    //return_to에 state/nonce를 심어 보냄(콜백에서 그대로 돌아옴)
     const rt = new URL(this.returnTo);
     rt.searchParams.set('state', state);
     rt.searchParams.set('nonce', nonce);
@@ -109,22 +110,18 @@ export class SteamOpenIdService {
   }
 
   private async ensureUser(
-    steamid64: string,
-    patch?: { personaName?: string | null; avatar?: string | null },
+    steamId: number,
+    patch: Partial<User> = {},
   ): Promise<User> {
-    return this.usersRepo.upsertBySteamId(steamid64, patch);
+    return this.usersRepo.upsertBySteamId(steamId, patch);
   }
 
-  async finalizeLogin(query: Record<string, string>): Promise<{
-    user: Pick<User, 'id' | 'steamId' | 'personaName' | 'avatar'>;
-    accessToken: string;
-    accessTokenExpiresIn: number;
-    refreshToken: string;
-    refreshTokenMaxAgeMs: number;
-  }> {
+  async finalizeLogin(query: Record<string, string>) {
     // OpenID 콜백 검증 + SteamID64 추출
     const { steamid64 } = await this.verifyCallback(query);
+    const steamId64 = steamid64; // 변수명 통일
 
+    // 프로필 보강(선택)
     let personaName: string | null = null;
     let avatar: string | null = null;
 
@@ -134,7 +131,7 @@ export class SteamOpenIdService {
         const { data } = await axios.get<SteamSummaries>(
           'https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/',
           {
-            params: { key: steamKey, steamids: steamid64 },
+            params: { key: steamKey, steamids: steamid64 }, // 외부 API에는 문자열로 전달
             timeout: 5000,
           },
         );
@@ -150,8 +147,9 @@ export class SteamOpenIdService {
       }
     }
 
-    // 유저 upsert (프로필 함께 패치)
-    const user = await this.ensureUser(steamid64, { personaName, avatar });
+    // 유저 upsert (내부 User는 number 유지)
+    const steamIdNum = Number(steamId64);
+    const user = await this.ensureUser(steamIdNum, { personaName, avatar });
 
     await this.cache.invalidateByIndex(profileIdx(user.id));
 
@@ -187,12 +185,17 @@ export class SteamOpenIdService {
       accessTokenExpiresIn: this.accessTtlSec,
       refreshToken,
       refreshTokenMaxAgeMs: this.refreshTtlSec * 1000,
+      steamId64, // 콜백에서 사용
     };
   }
 
   async testLogin(steamId: string) {
     try {
-      const user = await this.ensureUser(steamId);
+      const steamIdNum = Number(steamId);
+      if (!Number.isFinite(steamIdNum)) {
+        throw new BadRequestException('invalid steamId');
+      }
+      const user = await this.ensureUser(steamIdNum);
 
       // JWT_ACCESS_SECRET 값을 출력하여 확인
       console.log(

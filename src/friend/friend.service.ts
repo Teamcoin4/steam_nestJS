@@ -13,15 +13,17 @@ export class FriendsService {
   async getFriendsByUserId(userId: number): Promise<FriendDto[]> {
     const friends = await this.friendsRepository.find({
       where: { userId },
+      relations: ['friend'],
+      order: { id: 'ASC' },
     });
 
     return friends.map((f) => ({
       id: f.id,
       userId: f.userId,
-      friendId: f.friendId,
-      friend_since: f.friend_since,
-      created_at: f.created_at,
-      updated_at: f.updated_at,
+      friendId: f.friendId, // number
+      friend_since: f.friendSince ? f.friendSince.toISOString() : null,
+      created_at: f.createdAt.toISOString(),
+      updated_at: f.updatedAt.toISOString(),
     }));
   }
 

@@ -103,9 +103,9 @@ export interface CommonGame {
   };
 }
 
-export interface CommonGamesResponse {
+export type CommonGamesResponse = {
   friend: {
-    steamid: string;
+    steamid: number;
     persona_name: string;
   };
   summary: {
@@ -123,4 +123,4 @@ export interface CommonGamesResponse {
     refresh: string;
   };
   trace_id: string;
-}
+};

@@ -6,26 +6,26 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  ValueTransformer,
 } from 'typeorm';
 import { OwnedGame } from '../games/owned-game.entity';
 import { UserAchievement } from '../achievements/user-achievement.entity';
 import { Friend } from '../friends/friends.entity';
 
-@Entity()
+const bigintToNumber: ValueTransformer = {
+  to: (v: number | null | undefined) =>
+    typeof v === 'number' ? v.toString() : (v ?? null),
+  from: (v: string | null): number | null => (v == null ? null : Number(v)),
+};
+
+@Entity('user')
 export class User {
   @PrimaryGeneratedColumn()
   id!: number;
 
   @Index({ unique: true })
-  @Column({
-    type: 'bigint',
-    unique: true,
-    transformer: {
-      to: (value: string) => value,
-      from: (value: string) => value,
-    },
-  })
-  steamId!: string;
+  @Column({ type: 'integer', unique: true, transformer: bigintToNumber })
+  steamId!: number;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   personaName!: string | null;
@@ -42,12 +42,13 @@ export class User {
   @OneToMany(() => OwnedGame, (og) => og.user, { cascade: false })
   ownedGames!: OwnedGame[];
 
-  @OneToMany(() => UserAchievement, (UserA) => UserA.user, { cascade: false })
+  @OneToMany(() => UserAchievement, (ua) => ua.user, { cascade: false })
   userAchievements!: UserAchievement[];
 
-  @OneToMany(() => Friend, (friend) => friend.user, { cascade: false })
-  friends!: Friend[];
+  // Friend.friend / Friend.user 양방향 매핑과 일치
+  @OneToMany(() => Friend, (f) => f.user)
+  friends?: Friend[];
 
-  @OneToMany(() => Friend, (friend) => friend.friend, { cascade: false })
-  friendedBy!: Friend[];
+  @OneToMany(() => Friend, (f) => f.friend)
+  friendOf?: Friend[];
 }

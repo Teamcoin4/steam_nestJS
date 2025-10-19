@@ -12,6 +12,13 @@ import {
   myGamesIdx,
 } from 'src/common/cache/keys';
 
+type ListMyGamesResult = {
+  page: number;
+  size: number;
+  total: number;
+  items: unknown[]; // 필요하면 DTO로 교체
+};
+
 @Injectable()
 export class MeService {
   constructor(
@@ -20,7 +27,11 @@ export class MeService {
     private readonly cache: CacheAsideService,
   ) {}
 
-  async listMyGames(userId: number, q: ListMyGamesDto, force = false) {
+  async listMyGames(
+    userId: number,
+    q: ListMyGamesDto,
+    force = false,
+  ): Promise<ListMyGamesResult> {
     const {
       sort = 'playtimeForever',
       order = 'desc',
@@ -37,23 +48,23 @@ export class MeService {
       await this.cache.invalidateByIndex(idx);
     }
 
-    return this.cache.getOrLoad(
+    return this.cache.getOrLoad<ListMyGamesResult>(
       key,
-      async () => {
-        const { items, total } = await this.ownedRepo.listForUserQB(userId, {
+      async (): Promise<ListMyGamesResult> => {
+        const result = await this.ownedRepo.listForUserQB(userId, {
           sort,
           order,
           page,
           size,
           keyword,
         });
-
-        return {
-          page,
-          size,
-          total,
-          items,
-        };
+        // result의 타입을 명시적으로 분해해 any 전파 방지
+        const items: unknown[] = Array.isArray(result.items)
+          ? result.items
+          : [];
+        const total: number =
+          typeof result.total === 'number' ? result.total : 0;
+        return { page, size, total, items };
       },
       { ttlSec: 600, index: idx },
     );
@@ -62,7 +73,7 @@ export class MeService {
   async getMeByUserId(userId: number): Promise<MeProfileDto> {
     return this.cache.getOrLoad<MeProfileDto>(
       profileKey(userId),
-      async () => {
+      async (): Promise<MeProfileDto> => {
         const user = await this.usersRepo.findById(userId);
         if (!user) throw new NotFoundException('Profile not found');
         return {
@@ -77,8 +88,22 @@ export class MeService {
       { ttlSec: 30, index: profileIdx(userId) },
     );
   }
+
   async updateProfile(userId: number, patch: UpdateProfileDto): Promise<void> {
     await this.usersRepo.updateProfile(userId, patch);
     await this.cache.invalidateByIndex(profileIdx(userId));
+  }
+
+  async getProfile(userId: number): Promise<MeProfileDto> {
+    const user = await this.usersRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+    return {
+      id: user.id,
+      steamId: user.steamId,
+      personaName: user.personaName,
+      avatar: user.avatar,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString(),
+    };
   }
 }

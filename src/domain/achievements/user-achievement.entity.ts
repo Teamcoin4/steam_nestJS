@@ -12,7 +12,7 @@ import {
 import { Achievement } from './achievement.entity';
 import { User } from '../users/user.entity';
 import { Game } from '../games/game.entity';
-@Entity()
+@Entity('user_achievement')
 @Unique(['userId', 'gameId', 'apiName'])
 export class UserAchievement {
   @PrimaryGeneratedColumn() id!: number;

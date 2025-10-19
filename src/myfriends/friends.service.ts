@@ -35,7 +35,7 @@ import {
 import { SteamService } from '../integrations/steam/steam.service';
 
 interface FriendIdQueryResult {
-  friend_friendId: string;
+  friendId: number;
 }
 
 @Injectable()
@@ -103,48 +103,49 @@ export class FriendsService {
       const needsFiltering = dto.filter && dto.filter.length > 0;
 
       // 6. 통계 계산 및 필터링 (최적화: 필요할 때만)
-      let statsMapForItems: Map<string, FriendStats> | null = null; // ← Map<number, ...> → Map<string, ...>
+      let statsMapForItems: Map<number, FriendStats> | null = null;
+
       let total: number;
 
       if (includeStats || needsFiltering) {
-        // 친구 steamId만 먼저 가져오기
+        // 친구 userId(friendId)만 먼저 가져오기
         const friendIdsResult = await query
           .clone()
-          .select('friend.friendId')
+          .select('friend.friendId', 'friendId') // 별칭으로 raw 키 고정
           .getRawMany<FriendIdQueryResult>();
 
-        const allFriendSteamIds: string[] = friendIdsResult.map(
-          (r) => r.friend_friendId,
-        );
+        const allFriendUserIds: number[] = friendIdsResult
+          .map((r) => Number(r.friendId))
+          .filter((n) => Number.isFinite(n));
 
-        if (allFriendSteamIds.length === 0) {
+        if (allFriendUserIds.length === 0) {
           return this.buildEmptyResponse(dto, traceId);
         }
 
-        // 통계 계산 (최적화: 병렬 처리)
+        // 통계 계산 (friendUserId 기준)
         statsMapForItems = await this.calculateFriendsStatsOptimized(
           userId,
-          allFriendSteamIds,
+          allFriendUserIds,
         );
 
         // 필터 적용
         if (needsFiltering) {
-          const filteredFriendSteamIds = this.applyStatsFilter(
+          const filteredFriendUserIds = this.applyStatsFilter(
             statsMapForItems,
             dto.filter!,
           );
 
-          if (filteredFriendSteamIds.length === 0) {
+          if (filteredFriendUserIds.length === 0) {
             return this.buildEmptyResponse(dto, traceId);
           }
 
           query.andWhere('friend.friendId IN (:...filteredIds)', {
-            filteredIds: filteredFriendSteamIds,
+            filteredIds: filteredFriendUserIds,
           });
 
-          total = filteredFriendSteamIds.length;
+          total = filteredFriendUserIds.length;
         } else {
-          total = allFriendSteamIds.length;
+          total = allFriendUserIds.length;
         }
       } else {
         // 통계 불필요할 때는 count만
@@ -264,45 +265,22 @@ export class FriendsService {
 
   private async calculateFriendsStatsOptimized(
     userId: number,
-    friendSteamIds: string[], // ← number[] → string[]
-  ): Promise<Map<string, FriendStats>> {
-    const statsMap = new Map<string, FriendStats>();
-    if (friendSteamIds.length === 0) return statsMap;
-
-    // steamId로 User ID 조회
-    const friendUsers = await this.userRepository.find({
-      where: friendSteamIds.map((steamId) => ({ steamId })),
-      select: ['id', 'steamId', 'updatedAt'],
-    });
-
-    const steamIdToUser = new Map(friendUsers.map((u) => [u.steamId, u]));
+    friendUserIds: number[],
+  ): Promise<Map<number, FriendStats>> {
+    const statsMap = new Map<number, FriendStats>();
+    if (friendUserIds.length === 0) return statsMap;
 
     // 배치 크기 제한 (메모리 최적화)
     const BATCH_SIZE = 50;
-    const batches: string[][] = [];
-
-    for (let i = 0; i < friendSteamIds.length; i += BATCH_SIZE) {
-      batches.push(friendSteamIds.slice(i, i + BATCH_SIZE));
+    for (let i = 0; i < friendUserIds.length; i += BATCH_SIZE) {
+      const batch = friendUserIds.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (fid) => {
+          const stats = await this.calculateSingleFriendStats(userId, fid);
+          statsMap.set(fid, stats);
+        }),
+      );
     }
-
-    // 배치별로 병렬 처리
-    await Promise.all(
-      batches.map(async (batch) => {
-        await Promise.all(
-          batch.map(async (friendSteamId) => {
-            const friendUser = steamIdToUser.get(friendSteamId);
-            if (!friendUser) return;
-
-            const stats = await this.calculateSingleFriendStats(
-              userId,
-              friendUser.id,
-            );
-            statsMap.set(friendSteamId, stats);
-          }),
-        );
-      }),
-    );
-
     return statsMap;
   }
 
@@ -386,9 +364,9 @@ export class FriendsService {
 
   private buildFriendItemSync(
     friend: Friend,
-    statsMap: Map<string, FriendStats> | null, // ← Map<number, ...> → Map<string, ...>
+    statsMap: Map<number, FriendStats> | null,
   ): FriendItem {
-    const steamId = friend.friend?.steamId ?? '';
+    const steamId = friend.friend?.steamId ?? 0; // number로 고정
     const personaName = friend.friend?.personaName ?? null;
     const avatar = friend.friend?.avatar ?? null;
 
@@ -398,17 +376,14 @@ export class FriendsService {
       avatar: avatar,
       relationship: friend.status as 'friend' | 'pending' | 'blocked',
       links: {
-        profile: `/api/v1/friends/${steamId}`,
-        common_games: `/api/v1/friends/${steamId}/common-games`,
-        compare_achievements: `/api/v1/friends/${steamId}/games/{gameId}/achievements/compare`,
+        profile: `/api/v1/friends/${String(steamId)}`,
+        common_games: `/api/v1/friends/${String(steamId)}/common-games`,
+        compare_achievements: `/api/v1/friends/${String(steamId)}/games/{gameId}/achievements/compare`,
       },
     };
-
-    if (statsMap) {
+    if (statsMap && friend.friendId != null) {
       const stats = statsMap.get(friend.friendId);
-      if (stats) {
-        item.stats = stats;
-      }
+      if (stats) item.stats = stats;
     }
 
     return item;
@@ -445,25 +420,19 @@ export class FriendsService {
   }
 
   private applyStatsFilter(
-    statsMap: Map<string, FriendStats>, // ← Map<number, ...> → Map<string, ...>
+    statsMap: Map<number, FriendStats>,
     filters: ('recent_overlap' | 'mutual_only')[],
-  ): string[] {
-    // ← number[] → string[]
+  ): number[] {
     return Array.from(statsMap.entries())
       .filter(([, stats]) => {
         let pass = true;
-
-        if (filters.includes('mutual_only')) {
+        if (filters.includes('mutual_only'))
           pass = pass && stats.mutual_owned > 0;
-        }
-
-        if (filters.includes('recent_overlap')) {
+        if (filters.includes('recent_overlap'))
           pass = pass && stats.recent_overlap > 0;
-        }
-
         return pass;
       })
-      .map(([friendSteamId]) => friendSteamId);
+      .map(([friendUserId]) => friendUserId);
   }
 
   private buildFriendsListSelfLink(dto: GetFriendsDto): string {
@@ -521,7 +490,7 @@ export class FriendsService {
     }
 
     const existing = await this.friendRepository.findOne({
-      where: { userId, friendId: friendUser.steamId },
+      where: { userId, friendId: friendUser.id }, // Friend.friendId는 User.id
     });
 
     if (existing) {
@@ -530,7 +499,7 @@ export class FriendsService {
 
     const friend = this.friendRepository.create({
       userId,
-      friendId: friendUser.steamId,
+      friendId: friendUser.id, // 내부 id 저장
       status: FriendStatus.PENDING,
     });
 
@@ -560,7 +529,7 @@ export class FriendsService {
     const friend = await this.friendRepository.findOne({
       where: {
         userId: friendUserId,
-        friendId: user.steamId,
+        friendId: user.id, // 요청 보낸 사람이 보낸 대상의 내부 id
         status: FriendStatus.PENDING,
       },
     });
@@ -574,7 +543,7 @@ export class FriendsService {
 
     const reverseFriend = this.friendRepository.create({
       userId,
-      friendId: friendUser.steamId,
+      friendId: friendUser.id, // 역방향도 내부 id
       status: FriendStatus.ACCEPTED,
     });
     await this.friendRepository.save(reverseFriend);
@@ -592,11 +561,11 @@ export class FriendsService {
     const [user, friendUser] = await Promise.all([
       this.userRepository.findOne({
         where: { id: userId },
-        select: ['steamId'],
+        select: ['id', 'steamId'],
       }),
       this.userRepository.findOne({
         where: { id: friendUserId },
-        select: ['steamId'],
+        select: ['id', 'steamId'],
       }),
     ]);
 
@@ -605,8 +574,8 @@ export class FriendsService {
     }
 
     await this.friendRepository.delete([
-      { userId, friendId: friendUser.steamId },
-      { userId: friendUserId, friendId: user.steamId },
+      { userId, friendId: friendUser.id },
+      { userId: friendUserId, friendId: user.id },
     ]);
 
     await Promise.all([
@@ -619,7 +588,7 @@ export class FriendsService {
     // User 조회하여 steamId 얻기
     const friendUser = await this.userRepository.findOne({
       where: { id: friendUserId },
-      select: ['steamId'],
+      select: ['id', 'steamId'],
     });
 
     if (!friendUser) {
@@ -627,13 +596,13 @@ export class FriendsService {
     }
 
     let friend = await this.friendRepository.findOne({
-      where: { userId, friendId: friendUser.steamId },
+      where: { userId, friendId: friendUser.id },
     });
 
     if (!friend) {
       friend = this.friendRepository.create({
         userId,
-        friendId: friendUser.steamId,
+        friendId: friendUser.id,
         status: FriendStatus.BLOCKED,
       });
     } else {
@@ -653,7 +622,7 @@ export class FriendsService {
     // User 조회하여 steamId 얻기
     const friendUser = await this.userRepository.findOne({
       where: { id: friendUserId },
-      select: ['steamId'],
+      select: ['id', 'steamId'],
     });
 
     if (!friendUser) {
@@ -661,7 +630,7 @@ export class FriendsService {
     }
 
     const friend = await this.friendRepository.findOne({
-      where: { userId, friendId: friendUser.steamId },
+      where: { userId, friendId: friendUser.id },
     });
 
     return friend ? friend.status : 'none';
@@ -752,8 +721,8 @@ export class FriendsService {
           total,
         },
         links: {
-          self: this.buildCommonGamesSelfLink(friend.steamId, dto),
-          refresh: this.buildCommonGamesRefreshLink(friend.steamId),
+          self: this.buildCommonGamesSelfLink(String(friend.steamId), dto),
+          refresh: this.buildCommonGamesRefreshLink(String(friend.steamId)),
         },
         trace_id: traceId,
       };
@@ -793,7 +762,7 @@ export class FriendsService {
     // friendUserId로 User 조회하여 steamId 얻기
     const friendUser = await this.userRepository.findOne({
       where: { id: friendUserId },
-      select: ['steamId'],
+      select: ['id', 'steamId'],
     });
 
     if (!friendUser) {
@@ -803,7 +772,7 @@ export class FriendsService {
     const friendship = await this.friendRepository.findOne({
       where: {
         userId,
-        friendId: friendUser.steamId,
+        friendId: friendUser.id, // 내부 id로 확인
         status: FriendStatus.ACCEPTED,
       },
     });
@@ -1103,12 +1072,12 @@ export class FriendsService {
         },
         links: {
           self: this.buildAchievementCompareSelfLink(
-            friend.steamId,
+            String(friend.steamId),
             gameId,
             dto,
           ),
           refresh: this.buildAchievementCompareRefreshLink(
-            friend.steamId,
+            String(friend.steamId),
             gameId,
           ),
         },

@@ -2,7 +2,7 @@ export type ApiError = { code: string; message: string } | null;
 
 export type MeProfileDto = {
   id: number;
-  steamId: string;
+  steamId: number;
   personaName: string | null;
   avatar: string | null;
   createdAt: string;

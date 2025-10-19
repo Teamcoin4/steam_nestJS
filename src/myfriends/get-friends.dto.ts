@@ -67,19 +67,18 @@ export interface FriendStats {
   last_online_at: string | null;
 }
 
-export interface FriendItem {
-  steamid: string;
+export type FriendItem = {
+  steamid: number;
   persona_name: string | null;
   avatar: string | null;
   relationship: 'friend' | 'pending' | 'blocked';
-  privacy_state?: string;
   stats?: FriendStats;
   links: {
     profile: string;
     common_games: string;
     compare_achievements: string;
   };
-}
+};
 
 export interface FriendListResponse {
   summary: {

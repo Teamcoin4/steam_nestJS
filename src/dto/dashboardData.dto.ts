@@ -6,7 +6,7 @@ import { FriendDto } from './friends.dto';
 
 export class DashboardDataDto {
   profile!: {
-    steamid: string;
+    steamid: number;
     personaName: string;
     avatar?: string;
   };

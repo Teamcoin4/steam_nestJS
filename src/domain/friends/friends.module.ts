@@ -16,6 +16,6 @@ import { SteamModule } from '../../integrations/steam/steam.module';
   ],
   controllers: [FriendsController],
   providers: [FriendsService],
-  exports: [FriendsService],
+  exports: [TypeOrmModule, FriendsService],
 })
 export class FriendsModule {}
