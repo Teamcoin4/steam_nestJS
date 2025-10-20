@@ -15,7 +15,11 @@ async function bootstrap() {
   // 커스텀 Logger 사용 (추가)
   const logger = app.get(LoggerService);
   app.useLogger(logger);
-
+  // CORS 활성화
+  app.enableCors({
+    origin: 'http://localhost:3000',
+    credentials: true,
+  });
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser(process.env.COOKIE_SECRET));
   app.useGlobalPipes(

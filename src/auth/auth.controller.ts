@@ -15,17 +15,16 @@ import { Body } from '@nestjs/common';
 interface TestLoginDto {
   steamId: string;
 }
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly steamOpenIdService: SteamOpenIdService) {}
 
   @Post('login')
-  @HttpCode(201) // 테스트에서 기대하는 상태 코드
+  @HttpCode(201)
   async login(@Body() loginDto: TestLoginDto) {
-    // testLogin 메서드 호출
     const result = await this.steamOpenIdService.testLogin(loginDto.steamId);
 
-    // 테스트에서 기대하는 형식으로 반환
     return {
       user: result.user,
       tokenType: 'Bearer',
@@ -34,6 +33,7 @@ export class AuthController {
     };
   }
 }
+
 function getCookie(req: Request, name: string): string | undefined {
   const anyReq = req as unknown as { cookies?: unknown };
   const { cookies } = anyReq;
@@ -56,28 +56,41 @@ export class SteamAuthController {
   }
 
   @Get('callback')
-  async callback(
-    @Query() query: Record<string, string>,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async callback(@Query() query: Record<string, string>, @Res() res: Response) {
     const result = await this.steam.finalizeLogin(query);
 
-    // refersh 쿠키 설정 (HttpOnly)
+    // refresh 쿠키 설정
     res.cookie('refresh_token', result.refreshToken, {
       httpOnly: true,
-      secure: false, // 바꿔야함
+      secure: false,
       sameSite: 'lax',
       maxAge: result.refreshTokenMaxAgeMs,
       path: '/api/v1',
     });
 
-    // body에는 accessToken만
-    return {
+    // 🔍 디버깅 로그 추가!
+    console.log('🔍 전체 Query:', query);
+    console.log('🔍 redirect 값:', query.redirect);
+    console.log('🔍 redirect 타입:', typeof query.redirect);
+    console.log('🔍 조건 체크 결과:', query.redirect === 'frontend');
+
+    // 웹 브라우저에서 호출한 경우 프론트엔드로 리다이렉트
+    if (query.redirect === 'frontend') {
+      console.log('✅ 리다이렉트 실행!');
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      return res.redirect(
+        `${frontendUrl}/auth/callback?token=${result.accessToken}`,
+      );
+    }
+
+    console.log('❌ JSON 응답 실행');
+    // 기존 API 응답
+    return res.json({
       tokenType: 'Bearer',
       accessToken: result.accessToken,
       expiresIn: result.accessTokenExpiresIn,
       user: result.user,
-    };
+    });
   }
 
   @Post('refresh')
@@ -93,7 +106,7 @@ export class SteamAuthController {
 
     res.cookie('refresh_token', out.refreshToken, {
       httpOnly: true,
-      secure: false, // 바꿔야함
+      secure: false,
       sameSite: 'lax',
       maxAge: out.refreshTokenMaxAgeMs,
       path: '/api/v1',
