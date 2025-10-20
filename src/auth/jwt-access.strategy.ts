@@ -56,3 +56,15 @@ export class JwtAccessStrategy extends PassportStrategy(
     return { id: userId, steamId };
   }
 }
+
+// 기존코드
+//   validate(payload: AccessPayload) {
+//     if (
+//       !Number.isSafeInteger(payload.sub) ||
+//       (payload.typ && payload.typ !== 'access')
+//     )
+//       throw new UnauthorizedException('Invalid accessToken');
+
+//     return { userId: payload.sub, steamId: payload.steamId };
+//   }
+// }
