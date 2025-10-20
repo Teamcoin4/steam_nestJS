@@ -16,7 +16,7 @@ type ListMyGamesResult = {
   page: number;
   size: number;
   total: number;
-  items: unknown[]; // 필요하면 DTO로 교체
+  items: unknown[];
 };
 
 @Injectable()
@@ -58,12 +58,13 @@ export class MeService {
           size,
           keyword,
         });
-        // result의 타입을 명시적으로 분해해 any 전파 방지
+
         const items: unknown[] = Array.isArray(result.items)
           ? result.items
           : [];
         const total: number =
           typeof result.total === 'number' ? result.total : 0;
+
         return { page, size, total, items };
       },
       { ttlSec: 600, index: idx },
@@ -75,7 +76,11 @@ export class MeService {
       profileKey(userId),
       async (): Promise<MeProfileDto> => {
         const user = await this.usersRepo.findById(userId);
-        if (!user) throw new NotFoundException('Profile not found');
+
+        if (!user) {
+          throw new NotFoundException('Profile not found');
+        }
+
         return {
           id: user.id,
           steamId: user.steamId,
@@ -92,18 +97,5 @@ export class MeService {
   async updateProfile(userId: number, patch: UpdateProfileDto): Promise<void> {
     await this.usersRepo.updateProfile(userId, patch);
     await this.cache.invalidateByIndex(profileIdx(userId));
-  }
-
-  async getProfile(userId: number): Promise<MeProfileDto> {
-    const user = await this.usersRepo.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
-    return {
-      id: user.id,
-      steamId: user.steamId,
-      personaName: user.personaName,
-      avatar: user.avatar,
-      createdAt: user.createdAt.toISOString(),
-      updatedAt: user.updatedAt.toISOString(),
-    };
   }
 }
