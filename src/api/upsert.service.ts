@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, type FindOptionsOrder } from 'typeorm';
 import { Achievement } from '../domain/achievements/achievement.entity';
@@ -8,6 +8,8 @@ import { Game } from '../domain/games/game.entity';
 import { OwnedGame as OwnedGameEntity } from '../domain/games/owned-game.entity';
 import { User } from '../domain/users/user.entity';
 import { Friend } from '../domain/friends/friends.entity';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 
 // 업적 최소 형태
 type SimpleAchievement = {
@@ -65,6 +67,7 @@ export class UpsertService {
     private readonly uaRepo: Repository<UserAchievement>,
     @InjectRepository(User) private readonly usersRepo: Repository<User>,
     @InjectRepository(Friend) private readonly friendsRepo: Repository<Friend>,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
   async syncUserAll(steamId64: string, userId: number) {
@@ -130,6 +133,14 @@ export class UpsertService {
     }
 
     await this.syncFriends(steamId64, userId);
+    await this.cacheManager.set(`user:${userId}:synced`, true, 300);
+    this.logger.log(`[cache] user:${userId}:synced cached for 5m`);
+
+    const cached = await this.cacheManager.get(`user:${userId}:synced`);
+    this.logger.log(
+      `[cache-check] user:${userId}:synced => ${JSON.stringify(cached)}`,
+    );
+
     return { games: owned.length };
   }
 

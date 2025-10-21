@@ -3,6 +3,7 @@ import {
   BadRequestException,
   UnauthorizedException,
   Inject,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -47,6 +48,7 @@ interface RefreshPayload {
 
 @Injectable()
 export class SteamOpenIdService {
+  private readonly logger = new Logger(SteamOpenIdService.name);
   private readonly realm: string;
   private readonly returnTo: string;
   private readonly accessSecret: string;
@@ -78,6 +80,17 @@ export class SteamOpenIdService {
 
   // 로그인 시작 URL 생성
   async buildRedirectUrl(): Promise<string> {
+    const realm = this.cfg.get<string>('STEAM_REALM')!;
+    const returnTo = this.cfg.get<string>('STEAM_RETURN_TO')!;
+    const r = new URL(realm);
+    const t = new URL(returnTo);
+    const sameOrigin = r.protocol === t.protocol && r.host === t.host;
+    if (!sameOrigin) {
+      const msg = `STEAM_REALM and STEAM_RETURN_TO must share the same origin. realm=${realm} return_to=${returnTo}`;
+      this.logger.error(msg);
+      throw new BadRequestException('Steam OpenID misconfiguration');
+    }
+
     const state = randomBytes(16).toString('hex');
     const nonce = randomBytes(16).toString('hex');
 
@@ -86,15 +99,14 @@ export class SteamOpenIdService {
       .set(`oid:state:${state}`, '1', 'EX', 600, 'NX')
       .set(`oid:nonce:${nonce}`, '1', 'EX', 600, 'NX')
       .exec()) as PipelineResult[] | null;
-
     if (!replies) throw new BadRequestException('redis transaction aborted');
-
     const ok1 = replies[0][1] === 'OK';
     const ok2 = replies[1][1] === 'OK';
     if (!ok1 || !ok2)
       throw new BadRequestException('failed to save state/nonce');
 
-    const rt = new URL(this.returnTo);
+    // return_to에 state/nonce를 포함
+    const rt = new URL(returnTo);
     rt.searchParams.set('state', state);
     rt.searchParams.set('nonce', nonce);
 
@@ -102,7 +114,7 @@ export class SteamOpenIdService {
       'openid.ns': 'http://specs.openid.net/auth/2.0',
       'openid.mode': 'checkid_setup',
       'openid.return_to': rt.toString(),
-      'openid.realm': this.realm,
+      'openid.realm': realm,
       'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
       'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select',
     });

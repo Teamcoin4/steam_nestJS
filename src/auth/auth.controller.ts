@@ -7,12 +7,18 @@ import {
   Post,
   UnauthorizedException,
   HttpCode,
+  Inject,
 } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { SteamOpenIdService } from './steam-openid.service';
 import { UpsertService } from '../api/upsert.service';
+import { ConfigService } from '@nestjs/config';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 
-// 수신/응답 유효성 검사용 헬퍼
+// -------------------------
+// 유효성 검사용 헬퍼 함수들
+// -------------------------
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
 }
@@ -23,6 +29,9 @@ function isNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+// -------------------------
+// 타입 정의
+// -------------------------
 interface SteamCallbackResult {
   user: {
     id: number;
@@ -34,6 +43,7 @@ interface SteamCallbackResult {
   accessTokenExpiresIn: number;
   refreshToken: string;
   refreshTokenMaxAgeMs: number;
+  steamId64?: string;
 }
 interface RefreshRotateResult {
   accessToken: string;
@@ -74,16 +84,22 @@ export class SteamAuthController {
   constructor(
     private readonly steam: SteamOpenIdService,
     private readonly upsert: UpsertService,
+    private readonly config: ConfigService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache, // ✅ 캐시 주입
   ) {}
 
-  // 스팀 로그인 페이지로 리다이렉트
+  // -------------------------
+  // 스팀 로그인 시작
+  // -------------------------
   @Get()
   async start(@Res() res: Response) {
     const url = await this.steam.buildRedirectUrl();
     return res.redirect(url);
   }
 
-  // 스팀 OpenID 콜백
+  // -------------------------
+  // 스팀 로그인 콜백
+  // -------------------------
   @Get('callback')
   async callback(
     @Query() query: Record<string, string>,
@@ -94,13 +110,24 @@ export class SteamAuthController {
       throw new UnauthorizedException('Invalid steam callback response');
     }
 
-    // 로그인 성공 → 전체 동기화 비동기 트리거
-    if (raw.steamId64 && raw.user?.id) {
+    // ✅ 캐시에 유저 정보 저장
+    const user = raw.user;
+    const cacheKey = `user:${user.id}`;
+    await this.cacheManager.set(cacheKey, user, 3600); // 1시간 TTL
+    const cached = await this.cacheManager.get(cacheKey);
+    console.log(`✅ [CACHE] User cached (${cacheKey}):`, !!cached);
+    console.log(
+      `캐시 저장 확인:`,
+      await this.cacheManager.get(`user:${user.id}`),
+    );
+
+    // 로그인 성공 후 비동기 동기화 트리거
+    if (raw.steamId64 && user?.id) {
       console.log(
-        `[auth] trigger syncUserAll steamId64=${raw.steamId64} userId=${raw.user.id}`,
+        `[auth] trigger syncUserAll steamId64=${raw.steamId64} userId=${user.id}`,
       );
       this.upsert
-        .syncUserAll(raw.steamId64, raw.user.id)
+        .syncUserAll(raw.steamId64, user.id)
         .then(() => console.log('[auth] syncUserAll done'))
         .catch((err) => console.error('[auth] syncUserAll failed:', err));
     }
@@ -108,21 +135,32 @@ export class SteamAuthController {
     // refresh 쿠키 설정
     res.cookie('refresh_token', raw.refreshToken, {
       httpOnly: true,
-      secure: false, // TODO: prod에서 true
+      secure: false,
       sameSite: 'lax',
       maxAge: raw.refreshTokenMaxAgeMs,
       path: '/api/v1',
     });
 
+    // ✅ 프론트 리다이렉트
+    if (query.redirect === 'frontend') {
+      const frontend =
+        this.config.get<string>('FRONTEND_BASE_URL') ?? 'http://localhost:3001';
+      console.log(`[auth] redirecting to ${frontend}/dashboard/me`);
+      return res.redirect(`${frontend}/dashboard/me`);
+    }
+
+    // ✅ 기본 응답
     return {
       tokenType: 'Bearer',
       accessToken: raw.accessToken,
       expiresIn: raw.accessTokenExpiresIn,
-      user: raw.user,
+      user,
     };
   }
 
+  // -------------------------
   // 리프레시 토큰 교체
+  // -------------------------
   @Post('refresh')
   @HttpCode(200)
   async refresh(
@@ -139,7 +177,7 @@ export class SteamAuthController {
 
     res.cookie('refresh_token', raw.refreshToken, {
       httpOnly: true,
-      secure: false, // TODO: prod에서 true
+      secure: false,
       sameSite: 'lax',
       maxAge: raw.refreshTokenMaxAgeMs,
       path: '/api/v1',
