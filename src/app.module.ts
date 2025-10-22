@@ -26,6 +26,12 @@ import { RedisModule } from './infra/redis/redis.module';
 import { FriendsModule } from './domain/friends/friends.module';
 import { ExceptionModule } from './common/exceptions/exception.module';
 
+// Monitoring Modules - 추가
+import { LoggerModule } from './common/logger/logger.module';
+import { MetricsModule } from './common/metrics/metrics.module';
+import { MetricsInterceptor } from './common/metrics/metrics.interceptor';
+
+// Entities
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { EtagInterceptor } from './common/interceptors/etag.interceptor';
 
@@ -46,6 +52,10 @@ import { EtagInterceptor } from './common/interceptors/etag.interceptor';
       autoLoadEntities: true,
       synchronize: false, // dev only
     }),
+    // Monitoring Modules - 추가
+    LoggerModule,
+    MetricsModule,
+
     SteamModule,
     AuthModule,
     MeModule,
@@ -64,6 +74,7 @@ import { EtagInterceptor } from './common/interceptors/etag.interceptor';
     DashboardService,
     UserAchievementService,
     { provide: APP_INTERCEPTOR, useClass: EtagInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor }, // 추가
   ],
 })
 export class AppModule {
