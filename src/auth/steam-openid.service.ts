@@ -12,6 +12,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { CacheAsideService } from 'src/common/cache/cache-aside.service';
 import { myGamesIdx, profileIdx } from 'src/common/cache/keys';
 import { OwnedGameRepository } from 'src/domain/games/owned-game.repository';
+import { FriendsService } from '../myfriends/friends.service';
 
 const OP = 'https://steamcommunity.com/openid/login';
 
@@ -57,6 +58,7 @@ export class SteamOpenIdService {
     private readonly usersRepo: UsersRepository,
     private readonly ownedRepo: OwnedGameRepository,
     private readonly cache: CacheAsideService,
+    private readonly friendsService: FriendsService,
   ) {
     this.realm = this.cfg.getOrThrow<string>('STEAM_REALM');
     this.returnTo = this.cfg.getOrThrow<string>('STEAM_RETURN_TO');
@@ -165,8 +167,11 @@ export class SteamOpenIdService {
         await this.ownedRepo.upsertGames(games);
         await this.ownedRepo.upsertOwnedMany(owned);
         await this.cache.invalidateByIndex(myGamesIdx(user.id));
-      } catch {
-        /*..*/
+
+        // 🔥 친구 목록 동기화 추가!
+        await this.friendsService.syncFriendsFromSteam(user, steamKey);
+      } catch (error) {
+        console.error('게임/친구 동기화 실패:', error);
       }
     }
 

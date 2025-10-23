@@ -59,7 +59,13 @@ export class SteamAuthController {
   async callback(@Query() query: Record<string, string>, @Res() res: Response) {
     const result = await this.steam.finalizeLogin(query);
 
-    // refresh 쿠키 설정
+    // 🔥 토큰 확인 로그 추가
+    console.log(
+      '🔑 생성된 accessToken:',
+      result.accessToken.substring(0, 50) + '...',
+    );
+    console.log('🔑 토큰 길이:', result.accessToken.length);
+
     res.cookie('refresh_token', result.refreshToken, {
       httpOnly: true,
       secure: false,
@@ -68,23 +74,20 @@ export class SteamAuthController {
       path: '/api/v1',
     });
 
-    // 🔍 디버깅 로그 추가!
     console.log('🔍 전체 Query:', query);
     console.log('🔍 redirect 값:', query.redirect);
     console.log('🔍 redirect 타입:', typeof query.redirect);
     console.log('🔍 조건 체크 결과:', query.redirect === 'frontend');
 
-    // 웹 브라우저에서 호출한 경우 프론트엔드로 리다이렉트
     if (query.redirect === 'frontend') {
       console.log('✅ 리다이렉트 실행!');
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      return res.redirect(
-        `${frontendUrl}/auth/callback?token=${result.accessToken}`,
-      );
+      const redirectUrl = `${frontendUrl}/auth/callback?token=${result.accessToken}`;
+      console.log('🔗 리다이렉트 URL:', redirectUrl.substring(0, 100) + '...'); // 🔥 추가
+      return res.redirect(redirectUrl);
     }
 
     console.log('❌ JSON 응답 실행');
-    // 기존 API 응답
     return res.json({
       tokenType: 'Bearer',
       accessToken: result.accessToken,

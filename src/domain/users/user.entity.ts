@@ -18,12 +18,9 @@ export class User {
 
   @Index({ unique: true })
   @Column({
-    type: 'bigint',
+    type: 'varchar',
+    length: 17,
     unique: true,
-    transformer: {
-      to: (value: string) => value,
-      from: (value: string) => value,
-    },
   })
   steamId!: string;
 

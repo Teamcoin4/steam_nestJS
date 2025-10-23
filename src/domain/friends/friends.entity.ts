@@ -24,29 +24,26 @@ export class Friend {
   userId!: number;
 
   @Column({
-    type: 'bigint',
-    transformer: {
-      to: (value: string) => value,
-      from: (value: string) => value,
-    },
+    type: 'varchar', // BIGINT에서 VARCHAR로 변경
+    // transformer 로직 제거 (이제 데이터베이스와 타입이 일치하므로 필요 없음)
   })
-  friendId!: string; // ! 추가, Steam ID는 string으로 처리
+  friendId!: string; // Steam ID는 string으로 처리
 
   @Column({ type: 'timestamp', nullable: true })
-  friend_since!: Date | null; // ! 추가, nullable이면 | null 추가
+  friend_since!: Date | null; // nullable이면 | null 추가
 
   @Column({
     type: 'enum',
     enum: FriendStatus,
     default: FriendStatus.PENDING,
   })
-  status!: FriendStatus; // ! 추가
+  status!: FriendStatus;
 
   @CreateDateColumn()
-  created_at!: Date; // ! 추가
+  created_at!: Date;
 
   @UpdateDateColumn()
-  updated_at!: Date; // ! 추가
+  updated_at!: Date;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'userId' })

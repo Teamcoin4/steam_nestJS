@@ -8,6 +8,7 @@ import { UsersRepository } from '../src/domain/users/users.repository';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { REDIS } from 'src/infra/redis/redis.constants';
+import { FriendsService } from '../src/myfriends/friends.service';
 
 //axios 모킹 (OpenID check_authentication & GetPlayerSummaries)
 import axios from 'axios';
@@ -199,6 +200,12 @@ describe('Auth flow: GET /auth/steam -> GET /auth/steam/callback -> POST /auth/s
           useValue: cachePassThrough as CacheAsideService,
         },
         { provide: ConfigService, useValue: configMock as ConfigService },
+        {
+          provide: FriendsService,
+          useValue: {
+            syncFriendsFromSteam: jest.fn().mockResolvedValue(undefined),
+          } as Partial<FriendsService>,
+        },
       ],
     }).compile();
 
