@@ -40,7 +40,7 @@ const usersRepoMock: Pick<UsersRepository, 'findById'> = {
     if (id === 1) {
       return {
         id,
-        steamId: '76561198000355602',
+        steamId: Number('76561198000355602'),
         personaName: 'kim',
         avatar: 'https://example/avatar.jpg',
         createdAt: new Date('2025-09-06T08:30:00Z'),

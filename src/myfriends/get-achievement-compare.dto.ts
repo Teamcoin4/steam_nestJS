@@ -107,14 +107,20 @@ export interface ComparedAchievementDetail {
   } | null;
 }
 
-export interface AchievementCompareResponse {
+export type ComparedUser = {
+  steamid: number;
+  persona_name: string;
+  avatar: string;
+};
+
+export type AchievementCompareResponse = {
   game: {
     app_id: number;
     name: string;
-    icon: string;
+    icon: string | null;
   };
   friend: {
-    steamid: string;
+    steamid: number;
     persona_name: string;
     avatar: string;
   };
@@ -139,4 +145,4 @@ export interface AchievementCompareResponse {
     refresh: string;
   };
   trace_id: string;
-}
+};

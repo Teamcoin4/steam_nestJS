@@ -220,7 +220,7 @@ export class UserAchievementService {
       userId: a.userId,
       gameId: a.gameId,
       apiName: a.achievement.apiName,
-      name: a.achievement.name,
+      name: a.achievement.displayName,
       description: a.achievement.description,
       hidden: a.achievement.hidden,
       icon: a.achievement.icon,

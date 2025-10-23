@@ -87,16 +87,16 @@ export class DashboardService {
       const friendDtos: FriendDto[] = friends.map((f) => ({
         id: f.id,
         userId: f.userId,
-        friendId: f.friendId,
-        friend_since: f.friend_since ?? undefined,
-        created_at: f.created_at,
-        updated_at: f.updated_at,
+        friendId: f.friendId, // number
+        friend_since: f.friendSince ? f.friendSince.toISOString() : null,
+        created_at: f.createdAt.toISOString(),
+        updated_at: f.updatedAt.toISOString(),
       }));
 
       const data: DashboardDataDto = {
         profile: {
-          steamid: user.steamId,
-          personaName: user.personaName ?? '',
+          steamid: user.steamId, // DashboardSteamProfile가 number로 변경됨
+          personaName: user.personaName ?? 'Unknown',
           avatar: user.avatar ?? undefined,
         },
         summary,

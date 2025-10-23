@@ -2,10 +2,13 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
+  Index,
+  Unique,
   ManyToOne,
   JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ValueTransformer,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 
@@ -15,44 +18,55 @@ export enum FriendStatus {
   BLOCKED = 'blocked',
 }
 
+const bigintToNumber: ValueTransformer = {
+  to: (v: number | null | undefined) =>
+    typeof v === 'number' ? v.toString() : (v ?? null),
+  from: (v: string | null): number | null => (v == null ? null : Number(v)),
+};
+
 @Entity('friends')
+@Unique(['userId', 'friendSteamId'])
 export class Friend {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column()
+  @Index()
+  @Column({ type: 'int' })
   userId!: number;
 
-  @Column({
-    type: 'bigint',
-    transformer: {
-      to: (value: string) => value,
-      from: (value: string) => value,
-    },
+  // 스팀 친구의 SteamID64는 문자열로 보관(정밀도 보장)
+  @Index()
+  @Column({ type: 'varchar', length: 20, name: 'friend_steam_id' })
+  friendSteamId!: string;
+
+  // 우리 서비스의 사용자 ID(해당 친구가 가입한 경우에만 채움)
+  @Index()
+  @Column({ type: 'integer', nullable: true, transformer: bigintToNumber })
+  friendId!: number | null;
+
+  @Index()
+  @Column({ type: 'varchar', length: 16, default: FriendStatus.ACCEPTED })
+  status!: FriendStatus;
+
+  // Steam 친구가 된 시점(선택)
+  @Column({ type: 'timestamptz', name: 'friend_since', nullable: true })
+  friendSince!: Date | null;
+
+  @ManyToOne(() => User, (u) => u.friends, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId', referencedColumnName: 'id' })
+  user!: User;
+
+  // friendId → User.id 매핑(타입 이슈로 FK 제약 비활성)
+  @ManyToOne(() => User, (u) => u.friendOf, {
+    onDelete: 'CASCADE',
+    createForeignKeyConstraints: false,
   })
-  friendId!: string; // ! 추가, Steam ID는 string으로 처리
+  @JoinColumn({ name: 'friendId', referencedColumnName: 'id' })
+  friend!: User;
 
-  @Column({ type: 'timestamp', nullable: true })
-  friend_since!: Date | null; // ! 추가, nullable이면 | null 추가
+  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
+  createdAt!: Date;
 
-  @Column({
-    type: 'enum',
-    enum: FriendStatus,
-    default: FriendStatus.PENDING,
-  })
-  status!: FriendStatus; // ! 추가
-
-  @CreateDateColumn()
-  created_at!: Date; // ! 추가
-
-  @UpdateDateColumn()
-  updated_at!: Date; // ! 추가
-
-  @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'userId' })
-  user?: User; // ? 로 optional 처리 (관계는 lazy loading될 수 있음)
-
-  @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'friendId', referencedColumnName: 'steamId' })
-  friend?: User; // ? 로 optional 처리
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  updatedAt!: Date;
 }

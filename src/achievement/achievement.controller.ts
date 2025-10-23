@@ -14,6 +14,7 @@ export class AchievementController {
     /* 공백 오류 */
   }
 
+  // 게임별 업적 목록
   @Get(':gameId/achievements')
   async getAchievements(
     @Param('gameId', ParseIntPipe) gameId: number, // gameId가 number가 아닐시 400(Bad Request) 에러 발생

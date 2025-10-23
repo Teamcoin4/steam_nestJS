@@ -110,18 +110,18 @@ class MockRedis {
   }
 }
 
-const usersRepoMock: UsersRepository = {
+const usersRepoMock: Pick<UsersRepository, 'upsertBySteamId'> = {
   upsertBySteamId: (
-    steamId: string,
+    steamId: number,
     patch?: { personaName?: string | null; avatar?: string | null },
   ) =>
     Promise.resolve({
       id: 1,
-      steamId,
+      steamId, // number 유지
       personaName: patch?.personaName ?? null,
       avatar: patch?.avatar ?? null,
     }),
-} as UsersRepository;
+} as unknown as UsersRepository;
 
 const ownedRepoMock: Partial<OwnedGameRepository> = {
   fetchOwnedGamesAsRows: async (_steamKey, _user) => {

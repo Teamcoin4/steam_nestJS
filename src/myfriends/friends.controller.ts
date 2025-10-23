@@ -40,7 +40,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async getAchievementCompare(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string,
+    @Param('steamid', ParseIntPipe) friendSteamId: number,
     @Param(
       'gameid',
       new ParseIntPipe({
@@ -90,7 +90,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async getCommonGames(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid', ParseIntPipe) friendSteamId: number,
     @Query(
       new ValidationPipe({
         transform: true,
@@ -122,7 +122,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async getFriendStatus(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid', ParseIntPipe) friendSteamId: number,
   ) {
     const userIdNum = parseInt(userId, 10);
 
@@ -164,7 +164,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async addFriend(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid', ParseIntPipe) friendSteamId: number,
   ) {
     const userIdNum = parseInt(userId, 10);
 
@@ -186,7 +186,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async acceptFriend(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid', ParseIntPipe) friendSteamId: number,
   ) {
     const userIdNum = parseInt(userId, 10);
 
@@ -208,7 +208,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async removeFriend(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid', ParseIntPipe) friendSteamId: number,
   ) {
     const userIdNum = parseInt(userId, 10);
 
@@ -230,7 +230,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async blockFriend(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid', ParseIntPipe) friendSteamId: number,
   ) {
     const userIdNum = parseInt(userId, 10);
 
