@@ -40,11 +40,11 @@ const usersRepoMock: Pick<UsersRepository, 'findById'> = {
     if (id === 1) {
       return {
         id,
-        steamId: Number('76561198000355602'),
+        steamId: String('76561198000355602'),
         personaName: 'kim',
         avatar: 'https://example/avatar.jpg',
-        createdAt: new Date('2025-09-06T08:30:00Z'),
-        updatedAt: new Date('2025-09-30T09:00:00Z'),
+        created_at: new Date('2025-09-06T08:30:00Z'),
+        updated_at: new Date('2025-09-30T09:00:00Z'),
         ownedGames: [],
         userAchievements: [],
         friends: [],
@@ -215,8 +215,8 @@ describe('MeController e2e', () => {
         steamId: '76561198000355602',
         personaName: 'kim',
         avatar: 'https://example/avatar.jpg',
-        createdAt: '2025-09-06T08:30:00.000Z',
-        updatedAt: '2025-09-30T09:00:00.000Z',
+        created_at: '2025-09-06T08:30:00.000Z',
+        updated_at: '2025-09-30T09:00:00.000Z',
       },
       error: null,
     });

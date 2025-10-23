@@ -68,7 +68,7 @@ export interface FriendStats {
 }
 
 export type FriendItem = {
-  steamid: number;
+  steamid: string;
   persona_name: string | null;
   avatar: string | null;
   relationship: 'friend' | 'pending' | 'blocked';
@@ -100,7 +100,7 @@ export interface FriendListResponse {
 
 // 내부 쿼리 결과 타입
 export interface FriendIdQueryResult {
-  friend_friendId: number;
+  friend_friendId: string;
 }
 
 // Redis 캐시 인터페이스

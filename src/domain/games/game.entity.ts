@@ -15,9 +15,9 @@ export class Game {
   @Column() title!: string;
   @Column({ nullable: true }) icon?: string;
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt!: Date;
+  created_at!: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt!: Date;
+  updated_at!: Date;
 
   @OneToMany(() => OwnedGame, (og) => og.game, { cascade: false })
   ownedGames!: OwnedGame[];

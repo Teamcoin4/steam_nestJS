@@ -105,7 +105,7 @@ export interface CommonGame {
 
 export type CommonGamesResponse = {
   friend: {
-    steamid: number;
+    steamid: string;
     persona_name: string;
   };
   summary: {

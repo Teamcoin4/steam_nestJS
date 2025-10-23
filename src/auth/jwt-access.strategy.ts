@@ -42,12 +42,12 @@ export class JwtAccessStrategy extends PassportStrategy(
       throw new UnauthorizedException('Invalid accessToken');
     }
 
-    // steamId를 number로 정규화
-    let steamId: number | undefined =
-      typeof payload.steamId === 'number'
+    // steamId를 string 정규화
+    let steamId: string | undefined =
+      typeof payload.steamId === 'string'
         ? payload.steamId
         : typeof payload.steamId === 'string'
-          ? Number(payload.steamId)
+          ? String(payload.steamId)
           : undefined;
     if (!steamId) {
       const u = await this.users.findOne({ where: { id: userId } });

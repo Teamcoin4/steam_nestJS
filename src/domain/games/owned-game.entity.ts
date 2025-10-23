@@ -23,9 +23,9 @@ export class OwnedGame {
   @Column({ default: 0 }) playtimeForever!: number;
   @Column({ default: 0 }) playtime2Weeks!: number;
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt!: Date;
+  created_at!: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt!: Date;
+  updated_at!: Date;
   @Column({
     type: 'timestamptz',
     nullable: true,

@@ -12,8 +12,11 @@ async function bootstrap() {
 
   const logger = app.get(LoggerService);
   app.useLogger(logger);
-
-  // ✅ 글로벌 Prefix 추가
+  // CORS 활성화
+  app.enableCors({
+    origin: 'http://localhost:3000',
+    credentials: true,
+  });
   app.setGlobalPrefix('api/v1');
 
   // ✅ CORS 설정 강화 (쿠키 포함 + 프론트 3001 허용)
