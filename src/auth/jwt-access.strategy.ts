@@ -31,6 +31,7 @@ export class JwtAccessStrategy extends PassportStrategy(
   }
 
   async validate(payload: AccessPayload) {
+    console.log('[JWT validate payload]', payload);
     const userId = Number.isSafeInteger(payload.sub)
       ? (payload.sub as number)
       : Number.isSafeInteger(payload.id)

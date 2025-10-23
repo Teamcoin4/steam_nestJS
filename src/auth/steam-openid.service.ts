@@ -303,6 +303,11 @@ export class SteamOpenIdService {
     refreshTokenMaxAgeMs: number;
   }> {
     // refresh JWT 검증
+    console.log(
+      '[rotateRefreshToken] called with',
+      oldToken.slice(0, 30),
+      '...',
+    );
     const decoded = await this.jwt
       .verifyAsync<RefreshPayload>(oldToken, {
         secret: this.refreshSecret,

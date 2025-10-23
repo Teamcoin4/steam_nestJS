@@ -24,6 +24,8 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "useUnknownInCatchVariables": true,
+    "typeRoots": ["./src/types", "./node_modules/@types"],
+
     "paths": {
       "src/*": ["src/*"]
     }
