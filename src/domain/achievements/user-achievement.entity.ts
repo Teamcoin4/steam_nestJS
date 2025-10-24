@@ -12,7 +12,7 @@ import {
 import { Achievement } from './achievement.entity';
 import { User } from '../users/user.entity';
 import { Game } from '../games/game.entity';
-@Entity()
+@Entity('user_achievement')
 @Unique(['userId', 'gameId', 'apiName'])
 export class UserAchievement {
   @PrimaryGeneratedColumn() id!: number;
@@ -22,9 +22,9 @@ export class UserAchievement {
   @Column({ default: false }) achieved!: boolean;
   @Column({ type: 'timestamptz', nullable: true }) unlockedAt!: Date | null;
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt!: Date;
+  created_at!: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt!: Date;
+  updated_at!: Date;
 
   @ManyToOne(() => Achievement, (achievement) => achievement.userAchievements, {
     onDelete: 'CASCADE',

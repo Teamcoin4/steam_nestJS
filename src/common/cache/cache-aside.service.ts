@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import type { Redis } from 'ioredis';
@@ -8,7 +8,7 @@ type GetOrLoadOptions = {
   ttlSec?: number;
   // 무효화용 인덱스 세트 이름. 지정 시 키를 세트에 등록
   index?: string | string[];
-  // 스탬피드 방지 락 유지 시간
+  // 스탬피드 방지 락 유지 시간(ms)
   lockMs?: number;
 };
 
@@ -27,11 +27,11 @@ export class CacheAsideService {
     return hasGetClient(storeUnknown) ? storeUnknown.getClient() : null;
   }
 
-  private async sleep(ms: number) {
+  private async sleep(ms: number): Promise<void> {
     await new Promise<void>((r) => setTimeout(r, ms));
   }
 
-  private asArray(v?: string | string[]) {
+  private asArray(v?: string | string[]): string[] {
     return Array.isArray(v) ? v : v ? [v] : [];
   }
 
@@ -39,26 +39,26 @@ export class CacheAsideService {
     indices: string[],
     key: string,
     client: Redis | null,
-  ) {
+  ): Promise<void> {
     if (!client || indices.length === 0) return;
     await Promise.all(indices.map((idx) => client.sadd(idx, key)));
   }
 
-  // Cache-Aside(+single-flight) 핵심
+  // Cache-Aside(+single-flight)
   async getOrLoad<T>(
     key: string,
     loader: () => Promise<T>,
-    opts: GetOrLoadOptions = {},
+    opts?: GetOrLoadOptions,
   ): Promise<T> {
     const cached = await this.cache.get<T>(key);
     if (cached !== undefined && cached !== null) return cached;
 
     const lockKey = `lock:${key}`;
-    const lockMs = opts.lockMs ?? 5000;
+    const lockMs = opts?.lockMs ?? 5000;
 
     const client = this.redis;
 
-    //SET NX PX로 락 시도
+    // SET NX PX로 락 시도
     const locked = client
       ? await client.set(lockKey, '1', 'PX', lockMs, 'NX')
       : 'OK';
@@ -66,12 +66,12 @@ export class CacheAsideService {
       try {
         const data = await loader();
 
-        if (opts.ttlSec !== undefined)
-          await this.cache.set(key, data, opts.ttlSec);
-        else await this.cache.set(key, data);
+        if (opts?.ttlSec !== undefined)
+          await this.cache.set(key, data as any, opts.ttlSec);
+        else await this.cache.set(key, data as any);
 
-        //인덱스 등록
-        const indices = this.asArray(opts.index);
+        // 인덱스 등록
+        const indices = this.asArray(opts?.index);
         await this.addToIndices(indices, key, client);
 
         return data;
@@ -85,33 +85,62 @@ export class CacheAsideService {
     const retry = await this.cache.get<T>(key);
     if (retry !== undefined && retry !== null) return retry;
 
-    //혹시 락이 끊겼는데 아직 미적재라면 안전하게 직접 로드
+    // 혹시 락이 끊겼는데 아직 미적재라면 안전하게 직접 로드
     const data = await loader();
-    if (opts.ttlSec !== undefined) await this.cache.set(key, data, opts.ttlSec);
-    else await this.cache.set(key, data);
+    if (opts?.ttlSec !== undefined)
+      await this.cache.set(key, data as any, opts.ttlSec);
+    else await this.cache.set(key, data as any);
 
-    const indices = this.asArray(opts.index);
+    const indices = this.asArray(opts?.index);
     await this.addToIndices(indices, key, client);
     return data;
+  }
+
+  get<T>(key: string): Promise<T | undefined> {
+    return this.cache.get<T>(key);
+  }
+
+  async set<T>(key: string, value: T, ttlMs?: number): Promise<void> {
+    await this.cache.set(key, value as any, ttlMs);
   }
 
   async del(key: string): Promise<void> {
     await this.cache.del(key);
   }
 
-  // 인덱스 기반 무효화 (세트에 등록된 모든 키 삭제 후 세트 제거)
-  async invalidateByIndex(index: string): Promise<void> {
-    const client = this.redis;
-    if (!client) return;
-    const keys = await client.smembers(index);
-    if (keys.length) {
-      await Promise.all(keys.map((k) => this.cache.del(k)));
-    }
-    await client.del(index);
+  async wrap<T>(
+    key: string,
+    factory: () => Promise<T>,
+    ttlMs?: number,
+  ): Promise<T> {
+    const hit = await this.get<T>(key);
+    if (hit !== undefined && hit !== null) return hit;
+    const val = await factory();
+    await this.set<T>(key, val, ttlMs);
+    return val;
   }
 
-  // 여러 인덱스를 한번에 무효화
-  async invalidateByIndices(indices: string[]): Promise<void> {
-    await Promise.all(indices.map((idx) => this.invalidateByIndex(idx)));
+  // 인덱스에 등록된 모든 키 무효화
+  async invalidateByIndex(index: string | string[]): Promise<void> {
+    const indices = this.asArray(index);
+    if (indices.length === 0) return;
+    const client = this.redis;
+    if (!client) {
+      // Redis 미사용이면 인덱스 기반 무효화는 건너뜀
+      return;
+    }
+    for (const idx of indices) {
+      try {
+        const members = await client.smembers(idx);
+        if (members.length > 0) {
+          // 캐시 키 삭제
+          await client.del(...members);
+        }
+        // 인덱스 세트 삭제
+        await client.del(idx);
+      } catch {
+        // 인덱스 하나 실패해도 전체 실패로 보지 않음
+      }
+    }
   }
 }

@@ -1,10 +1,10 @@
 // friendsDTO
 
-export class FriendDto {
-  id!: number;
-  userId!: number;
-  friendId!: string;
-  friend_since?: Date | null;
-  created_at!: Date;
-  updated_at!: Date;
-}
+export type FriendDto = {
+  id: number;
+  userId: number;
+  friendId: string;
+  friend_since: string | null;
+  created_at: string;
+  updated_at: string;
+};

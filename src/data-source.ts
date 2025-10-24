@@ -12,7 +12,7 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_NAME || 'app',
   entities: ['src/domain/**/*.entity.ts'],
   migrations: ['src/migrations/*.ts'],
-  synchronize: false,
+  synchronize: true,
   logging: true,
   migrationsTransactionMode: 'each', // 이 줄 추가 - 각 마이그레이션이 자신의 transaction 설정 사용
 });

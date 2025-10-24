@@ -12,6 +12,13 @@ import {
   myGamesIdx,
 } from 'src/common/cache/keys';
 
+type ListMyGamesResult = {
+  page: number;
+  size: number;
+  total: number;
+  items: unknown[];
+};
+
 @Injectable()
 export class MeService {
   constructor(
@@ -20,7 +27,11 @@ export class MeService {
     private readonly cache: CacheAsideService,
   ) {}
 
-  async listMyGames(userId: number, q: ListMyGamesDto, force = false) {
+  async listMyGames(
+    userId: number,
+    q: ListMyGamesDto,
+    force = false,
+  ): Promise<ListMyGamesResult> {
     const {
       sort = 'playtimeForever',
       order = 'desc',
@@ -37,10 +48,10 @@ export class MeService {
       await this.cache.invalidateByIndex(idx);
     }
 
-    return this.cache.getOrLoad(
+    return this.cache.getOrLoad<ListMyGamesResult>(
       key,
-      async () => {
-        const { items, total } = await this.ownedRepo.listForUserQB(userId, {
+      async (): Promise<ListMyGamesResult> => {
+        const result = await this.ownedRepo.listForUserQB(userId, {
           sort,
           order,
           page,
@@ -48,12 +59,13 @@ export class MeService {
           keyword,
         });
 
-        return {
-          page,
-          size,
-          total,
-          items,
-        };
+        const items: unknown[] = Array.isArray(result.items)
+          ? result.items
+          : [];
+        const total: number =
+          typeof result.total === 'number' ? result.total : 0;
+
+        return { page, size, total, items };
       },
       { ttlSec: 600, index: idx },
     );
@@ -62,21 +74,26 @@ export class MeService {
   async getMeByUserId(userId: number): Promise<MeProfileDto> {
     return this.cache.getOrLoad<MeProfileDto>(
       profileKey(userId),
-      async () => {
+      async (): Promise<MeProfileDto> => {
         const user = await this.usersRepo.findById(userId);
-        if (!user) throw new NotFoundException('Profile not found');
+
+        if (!user) {
+          throw new NotFoundException('Profile not found');
+        }
+
         return {
           id: user.id,
           steamId: user.steamId,
           personaName: user.personaName ?? null,
           avatar: user.avatar ?? null,
-          createdAt: user.createdAt.toISOString(),
-          updatedAt: user.updatedAt.toISOString(),
+          created_at: user.created_at.toISOString(),
+          updated_at: user.updated_at.toISOString(),
         };
       },
       { ttlSec: 30, index: profileIdx(userId) },
     );
   }
+
   async updateProfile(userId: number, patch: UpdateProfileDto): Promise<void> {
     await this.usersRepo.updateProfile(userId, patch);
     await this.cache.invalidateByIndex(profileIdx(userId));

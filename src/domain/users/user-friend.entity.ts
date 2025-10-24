@@ -13,7 +13,7 @@ import { User } from './user.entity';
 
 @Entity()
 @Unique(['userId', 'friendId'])
-export class Friend {
+export class Friends {
   @PrimaryGeneratedColumn() id!: number;
   @Index() @Column() userId!: number;
   @Index() @Column() friendId!: number;
@@ -30,7 +30,7 @@ export class Friend {
   @JoinColumn({ name: 'userId' })
   user!: User;
 
-  @ManyToOne(() => User, (user) => user.friendedBy, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, (user) => user.friendOf, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'friendId' })
   friend!: User;
 }

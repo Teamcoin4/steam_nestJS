@@ -5,8 +5,8 @@ export type MeProfileDto = {
   steamId: string;
   personaName: string | null;
   avatar: string | null;
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Envelope<T> = {

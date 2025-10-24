@@ -19,9 +19,9 @@ export class FriendsService {
       id: f.id,
       userId: f.userId,
       friendId: f.friendId,
-      friend_since: f.friend_since,
-      created_at: f.created_at,
-      updated_at: f.updated_at,
+      friend_since: f.friend_since!.toString(),
+      created_at: f.created_at.toString(),
+      updated_at: f.updated_at.toString(),
     }));
   }
 

@@ -1,9 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
-import { RedisHealthService } from './redis-health.service';
 import { REDIS } from './redis.constants';
 
+@Global()
 @Module({
   imports: [ConfigModule],
   providers: [
@@ -11,27 +11,16 @@ import { REDIS } from './redis.constants';
       provide: REDIS,
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => {
-        const url = cfg.getOrThrow<string>('REDIS_URL');
-        const u = new URL(url);
+        const url = cfg.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
         const client = new Redis(url, {
           maxRetriesPerRequest: 1,
-          enableReadyCheck: true,
+          enableOfflineQueue: false,
         });
-
-        console.log(
-          '[Redis] using URL',
-          `${u.protocol}//${u.username}@${u.hostname}:${u.port}`,
-        );
-        client.on('connect', () => console.log('[Redis] connecting...', URL));
-        client.on('ready', () => console.log('[Redis] ready'));
-        client.on('error', (e) => console.error('[Redis]', e.message));
+        client.on('error', (err) => console.error('Redis error', err));
         return client;
       },
     },
-    RedisHealthService,
   ],
-  exports: [REDIS, RedisHealthService],
+  exports: [REDIS],
 })
-export class RedisModule {
-  /* 공백오류 */
-}
+export class RedisModule {}

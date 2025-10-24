@@ -2,10 +2,12 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
+  Index,
+  Unique,
   ManyToOne,
   JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 
@@ -16,43 +18,41 @@ export enum FriendStatus {
 }
 
 @Entity('friends')
+@Unique(['userId', 'friendId'])
 export class Friend {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column()
+  @Index()
+  @Column({ type: 'int' })
   userId!: number;
 
   @Column({
-    type: 'bigint',
-    transformer: {
-      to: (value: string) => value,
-      from: (value: string) => value,
-    },
+    type: 'varchar', // SteamID64는 문자열
   })
-  friendId!: string; // ! 추가, Steam ID는 string으로 처리
+  friendId!: string; // Steam ID는 string으로 처리
 
   @Column({ type: 'timestamp', nullable: true })
-  friend_since!: Date | null; // ! 추가, nullable이면 | null 추가
+  friend_since!: Date | null;
 
   @Column({
     type: 'enum',
     enum: FriendStatus,
     default: FriendStatus.PENDING,
   })
-  status!: FriendStatus; // ! 추가
+  status!: FriendStatus;
 
   @CreateDateColumn()
-  created_at!: Date; // ! 추가
+  created_at!: Date;
 
   @UpdateDateColumn()
-  updated_at!: Date; // ! 추가
+  updated_at!: Date;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'userId' })
-  user?: User; // ? 로 optional 처리 (관계는 lazy loading될 수 있음)
+  user?: User;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'friendId', referencedColumnName: 'steamId' })
-  friend?: User; // ? 로 optional 처리
+  friend?: User;
 }

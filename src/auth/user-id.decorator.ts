@@ -1,3 +1,4 @@
+// src/auth/user-id.decorator.ts
 import {
   createParamDecorator,
   ExecutionContext,
@@ -5,16 +6,16 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 
-type Principal = { userId: number };
-type AuthRequest = Request & { user?: Principal; _user?: Principal };
+interface AuthUser {
+  sub?: number | string;
+  id?: number | string;
+  userId?: number | string;
+}
 
-export const UserId = createParamDecorator(
-  (_data: unknown, ctx: ExecutionContext): number => {
-    const req = ctx.switchToHttp().getRequest<AuthRequest>();
-    const id = req.user?.userId ?? req._user?.userId;
-    if (typeof id !== 'number' || !Number.isSafeInteger(id)) {
-      throw new UnauthorizedException('Invalid userId');
-    }
-    return id;
-  },
-);
+export const UserId = createParamDecorator((_data, ctx: ExecutionContext) => {
+  const req = ctx.switchToHttp().getRequest<Request & { user?: AuthUser }>();
+  const u = req.user;
+  const sub = u?.sub ?? u?.id ?? u?.userId;
+  if (!sub) throw new UnauthorizedException('Unauthorized: missing user id');
+  return String(sub);
+});

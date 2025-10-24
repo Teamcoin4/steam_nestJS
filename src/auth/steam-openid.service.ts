@@ -1,8 +1,14 @@
-import { Inject, Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  UnauthorizedException,
+  Logger,
+  Inject,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import type Redis from 'ioredis';
-import { REDIS } from '../infra/redis/redis.constants';
+import { CacheAsideService } from '../common/cache/cache-aside.service';
 import { randomBytes, createHash } from 'crypto';
 import { errorSummary } from 'src/common/error.util';
 import {
@@ -13,41 +19,68 @@ import {
 } from '@nestjs/jwt';
 import { UsersRepository } from 'src/domain/users/users.repository';
 import { User } from 'src/domain/users/user.entity';
-import { UnauthorizedException } from '@nestjs/common';
-import { CacheAsideService } from 'src/common/cache/cache-aside.service';
 import { myGamesIdx, profileIdx } from 'src/common/cache/keys';
 import { OwnedGameRepository } from 'src/domain/games/owned-game.repository';
+import { FriendsService } from '../domain/friends/friends.service';
 
 const OP = 'https://steamcommunity.com/openid/login';
 
 type PipelineResult = [err: Error | null, res: 'OK' | number | null];
 
+interface RedisPipeline {
+  set(key: string, value: string, ...args: (string | number)[]): this;
+  del(key: string): this;
+  exec(): Promise<PipelineResult[] | null>;
+}
+interface RedisLike {
+  multi(): RedisPipeline;
+  set(
+    key: string,
+    value: string,
+    ...args: (string | number)[]
+  ): Promise<'OK' | null>;
+  get(key: string): Promise<string | null>;
+  del(key: string): Promise<number>;
+}
+
+// ---- Strict typings to avoid any/unsafe ----
+interface RefreshPayload {
+  sub: number;
+  jti: string;
+  typ: 'refresh';
+}
+interface SteamSummaries {
+  response?: {
+    players?: Array<{
+      personaname?: string;
+      avatarfull?: string;
+    }>;
+  };
+}
+
 function parseRefreshEntry(json: string): { userId: number; hash: string } {
-  const obj: unknown = JSON.parse(json);
+  let obj: unknown;
+  try {
+    obj = JSON.parse(json);
+  } catch {
+    throw new UnauthorizedException('refresh payload malformed');
+  }
   if (!obj || typeof obj !== 'object') {
     throw new UnauthorizedException('refresh payload malformed');
   }
-  const u = (obj as Record<string, unknown>)['userId'];
-  const h = (obj as Record<string, unknown>)['hash'];
-
+  const rec = obj as Record<string, unknown>;
+  const u = rec['userId'];
+  const h = rec['hash'];
   if (typeof u !== 'number' || typeof h !== 'string') {
     throw new UnauthorizedException('refresh payload malformed');
   }
   return { userId: u, hash: h };
 }
-
-interface SteamSummaries {
-  response: { players: Array<{ personaname?: string; avatarfull?: string }> };
-}
-
-interface RefreshPayload {
-  sub: number;
-  jti?: string;
-  typ?: 'refresh';
-}
+// --------------------------------------------
 
 @Injectable()
 export class SteamOpenIdService {
+  private readonly logger = new Logger(SteamOpenIdService.name);
   private readonly realm: string;
   private readonly returnTo: string;
   private readonly accessSecret: string;
@@ -55,13 +88,68 @@ export class SteamOpenIdService {
   private readonly accessTtlSec: number;
   private readonly refreshTtlSec: number;
 
+  // Simple in-memory fallback for dev (used when no REDIS provider is bound)
+  private readonly mem = new Map<string, string>();
+  private get inMemoryRedis(): RedisLike {
+    const store = this.mem;
+    type Op = { kind: 'set' | 'del'; fn: () => void };
+    const createPipeline = (): RedisPipeline => {
+      const ops: Op[] = [];
+      return {
+        set(
+          key: string,
+          value: string,
+          ...args: (string | number)[]
+        ): RedisPipeline {
+          // consume args to satisfy eslint no-unused-vars
+          void args.length;
+          ops.push({ kind: 'set', fn: () => store.set(key, value) });
+          return this;
+        },
+        del(key: string): RedisPipeline {
+          ops.push({ kind: 'del', fn: () => store.delete(key) });
+          return this;
+        },
+        async exec(): Promise<PipelineResult[] | null> {
+          await Promise.resolve();
+          ops.forEach((o) => o.fn());
+          return ops.map((o) => (o.kind === 'set' ? [null, 'OK'] : [null, 1]));
+        },
+      };
+    };
+    return {
+      multi: createPipeline,
+      async set(
+        key: string,
+        value: string,
+        ...args: (string | number)[]
+      ): Promise<'OK'> {
+        // consume args to satisfy eslint no-unused-vars
+        void args.length;
+        await this.multi()
+          .set(key, value, ...args)
+          .exec();
+        return 'OK';
+      },
+      async get(key: string): Promise<string | null> {
+        await Promise.resolve();
+        return store.get(key) ?? null;
+      },
+      async del(key: string): Promise<number> {
+        await Promise.resolve();
+        return store.delete(key) ? 1 : 0;
+      },
+    };
+  }
+
   constructor(
     private readonly cfg: ConfigService,
-    @Inject(REDIS) private readonly redis: Redis,
     private readonly jwt: JwtService,
     private readonly usersRepo: UsersRepository,
     private readonly ownedRepo: OwnedGameRepository,
     private readonly cache: CacheAsideService,
+    private readonly friendsService: FriendsService,
+    @Optional() @Inject('REDIS') private readonly redis?: RedisLike,
   ) {
     this.realm = this.cfg.getOrThrow<string>('STEAM_REALM');
     this.returnTo = this.cfg.getOrThrow<string>('STEAM_RETURN_TO');
@@ -77,28 +165,44 @@ export class SteamOpenIdService {
     );
   }
 
+  // 안전 게터: 실제 Redis 없으면 메모리 대체
+  private get r(): RedisLike {
+    return this.redis ?? this.inMemoryRedis;
+  }
+
   // 로그인 시작 URL 생성
   async buildRedirectUrl(): Promise<string> {
+    // 테스트/개발 환경에서 설정이 없을 경우 기본값 사용
+    const realm =
+      this.cfg.get<string>('STEAM_REALM') ?? 'http://localhost:3000';
+    const returnTo =
+      this.cfg.get<string>('STEAM_RETURN_TO') ??
+      `${realm.replace(/\/$/, '')}/api/v1/auth/steam/callback`;
+    const r = new URL(realm);
+    const t = new URL(returnTo);
+    const sameOrigin = r.protocol === t.protocol && r.host === t.host;
+    if (!sameOrigin) {
+      const msg = `STEAM_REALM and STEAM_RETURN_TO must share the same origin. realm=${realm} return_to=${returnTo}`;
+      this.logger.error(msg);
+      throw new BadRequestException('Steam OpenID misconfiguration');
+    }
+
     const state = randomBytes(16).toString('hex');
     const nonce = randomBytes(16).toString('hex');
 
-    // 10분 TTL
-    const replies = (await this.redis
+    const replies: PipelineResult[] | null = await this.r
       .multi()
       .set(`oid:state:${state}`, '1', 'EX', 600, 'NX')
       .set(`oid:nonce:${nonce}`, '1', 'EX', 600, 'NX')
-      .exec()) as PipelineResult[] | null;
-
+      .exec();
     if (!replies) throw new BadRequestException('redis transaction aborted');
-
     const ok1 = replies[0][1] === 'OK';
     const ok2 = replies[1][1] === 'OK';
-
     if (!ok1 || !ok2)
       throw new BadRequestException('failed to save state/nonce');
 
-    //return_to에 state/nonce를 심어 보냄(콜백에서 그대로 돌아옴)
-    const rt = new URL(this.returnTo);
+    // return_to에 state/nonce를 포함
+    const rt = new URL(returnTo);
     rt.searchParams.set('state', state);
     rt.searchParams.set('nonce', nonce);
 
@@ -106,7 +210,7 @@ export class SteamOpenIdService {
       'openid.ns': 'http://specs.openid.net/auth/2.0',
       'openid.mode': 'checkid_setup',
       'openid.return_to': rt.toString(),
-      'openid.realm': this.realm,
+      'openid.realm': realm,
       'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
       'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select',
     });
@@ -114,10 +218,10 @@ export class SteamOpenIdService {
   }
 
   private async ensureUser(
-    steamid64: string,
-    patch?: { personaName?: string | null; avatar?: string | null },
+    steamId: string,
+    patch: Partial<User> = {},
   ): Promise<User> {
-    return this.usersRepo.upsertBySteamId(steamid64, patch);
+    return this.usersRepo.upsertBySteamId(steamId, patch);
   }
 
   async finalizeLogin(query: Record<string, string>): Promise<{
@@ -125,7 +229,9 @@ export class SteamOpenIdService {
   }> {
     // OpenID 콜백 검증 + SteamID64 추출
     const { steamid64 } = await this.verifyCallback(query);
+    const steamId64 = steamid64; // 변수명 통일
 
+    // 프로필 보강(선택)
     let personaName: string | null = null;
     let avatar: string | null = null;
 
@@ -135,7 +241,7 @@ export class SteamOpenIdService {
         const { data } = await axios.get<SteamSummaries>(
           'https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/',
           {
-            params: { key: steamKey, steamids: steamid64 },
+            params: { key: steamKey, steamids: steamid64 }, // 외부 API에는 문자열로 전달
             timeout: 5000,
           },
         );
@@ -151,8 +257,9 @@ export class SteamOpenIdService {
       }
     }
 
-    // 유저 upsert (프로필 함께 패치)
-    const user = await this.ensureUser(steamid64, { personaName, avatar });
+    // 유저 upsert (내부 User는 string 유지)
+    const steamIdStr = String(steamId64);
+    const user = await this.ensureUser(steamIdStr, { personaName, avatar });
 
     await this.cache.invalidateByIndex(profileIdx(user.id));
 
@@ -166,8 +273,11 @@ export class SteamOpenIdService {
         await this.ownedRepo.upsertGames(games);
         await this.ownedRepo.upsertOwnedMany(owned);
         await this.cache.invalidateByIndex(myGamesIdx(user.id));
-      } catch {
-        /*..*/
+
+        // 🔥 친구 목록 동기화 추가!
+        await this.friendsService.syncFriendsFromSteam(user, steamKey);
+      } catch (error) {
+        console.error('게임/친구 동기화 실패:', errorSummary(error));
       }
     }
 
@@ -236,7 +346,7 @@ export class SteamOpenIdService {
     if (!jti || !userIdFromJwt)
       throw new UnauthorizedException('REFRESH_MALFORMED');
 
-    const stored = await this.redis.get(`rt:${jti}`);
+    const stored = await this.r.get(`rt:${jti}`);
     if (!stored) throw new UnauthorizedException('REFERESH_REVOKED_OR_MISSING');
 
     const { userId: userIdFromStore, hash } = parseRefreshEntry(stored);
@@ -267,7 +377,7 @@ export class SteamOpenIdService {
     const userIdFromJwt = payload.sub;
     if (!jti || !userIdFromJwt) return;
 
-    const entry = await this.redis.get(`rt:${jti}`);
+    const entry = await this.r.get(`rt:${jti}`);
     if (!entry) return;
 
     const { userId: storedUserId, hash } = parseRefreshEntry(entry);
@@ -276,18 +386,16 @@ export class SteamOpenIdService {
     const givenHash = createHash('sha256').update(refreshToken).digest('hex');
     if (hash !== givenHash) return;
 
-    await this.redis.del(`rt:${jti}`);
+    await this.r.del(`rt:${jti}`);
   }
 
   async testLogin(steamId: string) {
     try {
-      const user = await this.ensureUser(steamId);
-
-      // JWT_ACCESS_SECRET 값을 출력하여 확인
-      console.log(
-        'testLogin에서 사용되는 JWT_ACCESS_SECRET:',
-        this.accessSecret,
-      );
+      const steamIdStr = String(steamId);
+      if (!/^\d{17}$/.test(steamIdStr)) {
+        throw new BadRequestException('invalid steamId');
+      }
+      const user = await this.ensureUser(steamIdStr);
 
       // JWT 토큰 직접 생성 (signAccessToken, signRefreshToken 메서드 사용하지 않음)
       const accessPayload = { sub: user.id, typ: 'access' };
@@ -302,19 +410,19 @@ export class SteamOpenIdService {
       );
 
       const jti = randomBytes(16).toString('hex');
-      const refreshPayload = { sub: user.id, jti, typ: 'refresh' };
+      const refreshPayload = { sub: user.id, jti, typ: 'refresh' as const };
       const refreshToken = await this.jwt.signAsync(refreshPayload, {
         secret: this.refreshSecret,
         expiresIn: 259200, // 하드코딩된 값: 3일 (초 단위)
       });
 
-      // Redis에 토큰 저장 (storeRefreshToken 메서드 사용하지 않음)
+      // 저장용 해시 생성
       const hash = createHash('sha256').update(refreshToken).digest('hex');
-      await this.redis.set(
+      await this.r.set(
         `rt:${jti}`,
         JSON.stringify({ userId: user.id, hash }),
         'EX',
-        259200, // 하드코딩된 값: 3일 (초 단위)
+        259200,
         'NX',
       );
 
@@ -331,7 +439,7 @@ export class SteamOpenIdService {
         refreshTokenMaxAgeMs: 259200 * 1000,
       };
     } catch (error) {
-      console.error('Error in testLogin:', error);
+      console.error('Error in testLogin:', errorSummary(error));
       throw error;
     }
   }
@@ -362,7 +470,7 @@ export class SteamOpenIdService {
     token: string,
   ) {
     const hash = createHash('sha256').update(token).digest('hex');
-    await this.redis.set(
+    await this.r.set(
       `rt:${jti}`,
       JSON.stringify({ userId, hash }),
       'EX',
@@ -377,6 +485,11 @@ export class SteamOpenIdService {
     refreshTokenMaxAgeMs: number;
   }> {
     // refresh JWT 검증
+    console.log(
+      '[rotateRefreshToken] called with',
+      oldToken.slice(0, 30),
+      '...',
+    );
     const decoded = await this.jwt
       .verifyAsync<RefreshPayload>(oldToken, {
         secret: this.refreshSecret,
@@ -391,17 +504,21 @@ export class SteamOpenIdService {
       throw new UnauthorizedException('malformed refresh token');
 
     // redis에 저장된 해시와 일치하는지 확인
-    const entry = await this.redis.get(`rt:${jti}`);
-    if (!entry) throw new UnauthorizedException('refresh revoked/expired');
+    const entry = await this.r.get(`rt:${jti}`);
+    if (typeof entry !== 'string') {
+      throw new UnauthorizedException('refresh revoked/expired');
+    }
+    const parsed = parseRefreshEntry(entry); // { userId: number; hash: string }
+    const storedUserId = parsed.userId;
+    const hash = parsed.hash;
 
-    const { userId: storedUserId, hash } = parseRefreshEntry(entry);
     const givenHash = createHash('sha256').update(oldToken).digest('hex');
     if (hash !== givenHash) throw new UnauthorizedException('refresh mismatch');
     if (storedUserId !== userId)
       throw new UnauthorizedException('refresh subject mismatch');
 
     //회전: 기존 키 삭제 -> 새 토큰 발급 -> 새 키 저장
-    await this.redis.del(`rt:${jti}`);
+    await this.r.del(`rt:${jti}`);
 
     const { token: accessToken } = await this.signAccessToken(userId);
     const { token: refreshToken, jti: newJti } =
@@ -446,11 +563,10 @@ export class SteamOpenIdService {
       const opNonce = query['openid.response_nonce'];
       if (!opNonce) throw new BadRequestException('response_nonce missing');
 
-      const multi = this.redis.multi().del(`oid:state:${state}`);
+      const multi = this.r.multi().del(`oid:state:${state}`);
       if (nonce) multi.del(`oid:nonce:${nonce}`);
       multi.set(`oid:opnonce:${opNonce}`, '1', 'EX', 600, 'NX');
-
-      const results = (await multi.exec()) as PipelineResult[] | null;
+      const results: PipelineResult[] | null = await multi.exec();
       if (!results) throw new BadRequestException('transaction aborted');
 
       let i = 0;
@@ -484,14 +600,13 @@ export class SteamOpenIdService {
 
       // OpenID 서명 검증 요청 본문 만들기
       const body = new URLSearchParams();
-
-      for (const [k, v] of Object.entries(query)) {
+      for (const k of Object.keys(query)) {
         if (k.startsWith('openid.') && k !== 'openid.mode') {
-          body.append(k, v);
+          const v = query[k];
+          if (typeof v === 'string') body.append(k, v);
         }
       }
 
-      //마지막에 단 한 번만 check_authentication 지정
       body.set('openid.mode', 'check_authentication');
 
       const { data } = await axios.post<string>(OP, body, {

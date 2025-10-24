@@ -1,54 +1,37 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, FindOneOptions } from 'typeorm';
 import { User } from './user.entity';
-import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity.js';
-
-export type UserProfilePatch = {
-  personaName?: string | null;
-  avatar?: string | null;
-};
 
 @Injectable()
 export class UsersRepository {
-  constructor(@InjectRepository(User) private repo: Repository<User>) {}
+  constructor(
+    @InjectRepository(User)
+    private readonly repo: Repository<User>,
+  ) {}
 
   async findBySteamId(steamId: string): Promise<User | null> {
     return this.repo.findOne({ where: { steamId } });
   }
 
-  async upsertBySteamId(
-    steamId: string,
-    patch?: UserProfilePatch,
-  ): Promise<User> {
-    const values: QueryDeepPartialEntity<User> = { steamId };
-
-    if (patch) {
-      if (patch.personaName === null) values.personaName = () => 'NULL';
-      else if (patch.personaName !== undefined)
-        values.personaName = patch.personaName;
-
-      if (patch.avatar === null) values.avatar = () => 'NULL';
-      else if (patch.avatar !== undefined) values.avatar = patch.avatar;
-    }
-    await this.repo.upsert(values, {
-      conflictPaths: ['steamId'],
-      skipUpdateIfNoValuesChanged: true,
-    });
-
-    const user = await this.findBySteamId(steamId);
-    if (!user) throw new Error('upsertBySteamId: user not found after upsert');
-    return user;
+  async upsertBySteamId(steamId: string, patch: Partial<User>): Promise<User> {
+    const values: Partial<User> = { steamId, ...patch };
+    await this.repo.upsert(values, ['steamId']);
+    return this.findBySteamId(steamId) as Promise<User>;
   }
 
   async findById(id: number): Promise<User | null> {
     return this.repo.findOne({ where: { id } });
   }
 
+  async findOne(options: FindOneOptions<User>): Promise<User | null> {
+    return this.repo.findOne(options);
+  }
+
   async updateProfile(
     userId: number,
-    patch: { personaName?: string | null; avatar?: string | null },
+    patch: Partial<Pick<User, 'personaName' | 'avatar'>>,
   ): Promise<void> {
-    await this.repo.save({ id: userId, ...patch });
+    await this.repo.update({ id: userId }, patch);
   }
 }

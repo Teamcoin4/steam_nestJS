@@ -11,19 +11,16 @@ import { OwnedGame } from '../games/owned-game.entity';
 import { UserAchievement } from '../achievements/user-achievement.entity';
 import { Friend } from '../friends/friends.entity';
 
-@Entity()
+@Entity('user')
 export class User {
   @PrimaryGeneratedColumn()
   id!: number;
 
   @Index({ unique: true })
   @Column({
-    type: 'bigint',
+    type: 'varchar',
+    length: 17,
     unique: true,
-    transformer: {
-      to: (value: string) => value,
-      from: (value: string) => value,
-    },
   })
   steamId!: string;
 
@@ -34,20 +31,21 @@ export class User {
   avatar!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt!: Date;
+  created_at!: Date;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt!: Date;
+  updated_at!: Date;
 
   @OneToMany(() => OwnedGame, (og) => og.user, { cascade: false })
   ownedGames!: OwnedGame[];
 
-  @OneToMany(() => UserAchievement, (UserA) => UserA.user, { cascade: false })
+  @OneToMany(() => UserAchievement, (ua) => ua.user, { cascade: false })
   userAchievements!: UserAchievement[];
 
-  @OneToMany(() => Friend, (friend) => friend.user, { cascade: false })
-  friends!: Friend[];
+  // Friend.friend / Friend.user 양방향 매핑과 일치
+  @OneToMany(() => Friend, (f) => f.user)
+  friends?: Friend[];
 
-  @OneToMany(() => Friend, (friend) => friend.friend, { cascade: false })
-  friendedBy!: Friend[];
+  @OneToMany(() => Friend, (f) => f.friend)
+  friendOf?: Friend[];
 }

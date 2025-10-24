@@ -1,4 +1,3 @@
-// src/myfriends/friends.controller.ts
 import {
   Controller,
   Get,
@@ -15,13 +14,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FriendsService } from './friends.service';
-import { User } from '../domain/users/user.entity';
-import { UserId } from '../auth/user-id.decorator';
+import { User } from '../users/user.entity';
+import { UserId } from '../../auth/user-id.decorator';
 import { ThrottlerGuard } from '@nestjs/throttler';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { GetFriendsDto } from './get-friends.dto';
-import { GetCommonGamesDto } from './get-common-games.dto';
-import { GetAchievementCompareDto } from './get-achievement-compare.dto';
+import { JwtAuthGuard } from '../../../src/auth/jwt-auth.guard';
+import { GetFriendsDto } from '../../myfriends/get-friends.dto';
+import { GetCommonGamesDto } from '../../myfriends/get-common-games.dto';
+import { GetAchievementCompareDto } from '../../myfriends/get-achievement-compare.dto';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Friends')
@@ -41,15 +40,8 @@ export class FriendsController {
   async getAchievementCompare(
     @UserId() userId: string,
     @Param('steamid') friendSteamId: string,
-    @Param(
-      'gameid',
-      new ParseIntPipe({
-        errorHttpStatusCode: 400,
-        exceptionFactory: () =>
-          new BadRequestException('gameId must be a positive integer'),
-      }),
-    )
-    gameId: number,
+    // gameId는 여전히 숫자이므로 ParseIntPipe를 사용하지만, 사용자 정의 예외 대신 간단한 파이프를 사용합니다.
+    @Param('gameid', ParseIntPipe) gameId: number,
     @Query(
       new ValidationPipe({
         transform: true,
@@ -90,7 +82,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async getCommonGames(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid') friendSteamId: string,
     @Query(
       new ValidationPipe({
         transform: true,
@@ -122,7 +114,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async getFriendStatus(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid') friendSteamId: string,
   ) {
     const userIdNum = parseInt(userId, 10);
 
@@ -164,7 +156,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async addFriend(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid') friendSteamId: string,
   ) {
     const userIdNum = parseInt(userId, 10);
 
@@ -186,7 +178,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async acceptFriend(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid') friendSteamId: string,
   ) {
     const userIdNum = parseInt(userId, 10);
 
@@ -208,7 +200,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async removeFriend(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid') friendSteamId: string,
   ) {
     const userIdNum = parseInt(userId, 10);
 
@@ -230,7 +222,7 @@ export class FriendsController {
   @UseGuards(ThrottlerGuard)
   async blockFriend(
     @UserId() userId: string,
-    @Param('steamid') friendSteamId: string, // ← ParseIntPipe 제거
+    @Param('steamid') friendSteamId: string,
   ) {
     const userIdNum = parseInt(userId, 10);
 

@@ -4,6 +4,8 @@ import {
   Query,
   UseGuards,
   UseInterceptors,
+  Patch,
+  Body,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -18,6 +20,7 @@ import {
 import { MeService } from './me.service';
 import { Envelope, MeProfileDto } from './dto/me-profile.dto';
 import { ListMyGamesDto } from './dto/list-my-games.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserId } from 'src/auth/user-id.decorator';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { NoStoreInterceptor } from 'src/common/interceptors/no-store.interceptor';
@@ -32,6 +35,7 @@ function parseBool(s?: string) {
 export class MeController {
   constructor(private readonly meService: MeService) {}
 
+  // 내 게임 목록 조회
   @UseInterceptors(NoStoreInterceptor)
   @UseGuards(JwtAuthGuard)
   @Get('games')
@@ -43,6 +47,7 @@ export class MeController {
     return this.meService.listMyGames(userId, q, parseBool(force));
   }
 
+  // 내 프로필 조회
   @ApiOperation({ summary: '현재 로그인한 사용자의 기본 프로필 반환' })
   @ApiOkResponse({
     schema: {
@@ -52,8 +57,8 @@ export class MeController {
           steamId: '76561198000355602',
           personaName: 'kim',
           avatar: 'https://.../avatarfull.jpg',
-          createdAt: '2025-09-06T08:30:00Z',
-          updatedAt: '2025-09-30T09:00:00Z',
+          created_at: '2025-09-06T08:30:00Z',
+          updated_at: '2025-09-30T09:00:00Z',
         },
         error: null,
       },
@@ -71,7 +76,7 @@ export class MeController {
     schema: {
       example: {
         data: null,
-        error: { code: 'fobidden', message: 'Account is restricted' },
+        error: { code: 'forbidden', message: 'Account is restricted' },
       },
     },
   })
@@ -97,5 +102,26 @@ export class MeController {
   async getMe(@UserId() userId: number): Promise<Envelope<MeProfileDto>> {
     const data = await this.meService.getMeByUserId(userId);
     return { data, error: null };
+  }
+
+  // 프로필 업데이트
+  @ApiOperation({ summary: '사용자 프로필 정보 수정' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        data: { message: 'Profile updated successfully' },
+        error: null,
+      },
+    },
+  })
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(NoStoreInterceptor)
+  @Patch()
+  async updateProfile(
+    @UserId() userId: number,
+    @Body() patch: UpdateProfileDto,
+  ): Promise<Envelope<{ message: string }>> {
+    await this.meService.updateProfile(userId, patch);
+    return { data: { message: 'Profile updated successfully' }, error: null };
   }
 }
