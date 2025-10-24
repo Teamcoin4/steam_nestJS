@@ -14,13 +14,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FriendsService } from './friends.service';
-import { User } from '../domain/users/user.entity';
-import { UserId } from '../auth/user-id.decorator';
+import { User } from '../users/user.entity';
+import { UserId } from '../../auth/user-id.decorator';
 import { ThrottlerGuard } from '@nestjs/throttler';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { GetFriendsDto } from './get-friends.dto';
-import { GetCommonGamesDto } from './get-common-games.dto';
-import { GetAchievementCompareDto } from './get-achievement-compare.dto';
+import { JwtAuthGuard } from '../../../src/auth/jwt-auth.guard';
+import { GetFriendsDto } from '../../myfriends/get-friends.dto';
+import { GetCommonGamesDto } from '../../myfriends/get-common-games.dto';
+import { GetAchievementCompareDto } from '../../myfriends/get-achievement-compare.dto';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Friends')

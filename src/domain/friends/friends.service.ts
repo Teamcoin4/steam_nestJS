@@ -11,9 +11,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import type { Cache } from 'cache-manager';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Friend, FriendStatus } from '../domain/friends/friends.entity';
-import { User } from '../domain/users/user.entity';
-import { OwnedGame } from '../domain/games/owned-game.entity';
+import { Friend, FriendStatus } from './friends.entity';
+import { User } from '../users/user.entity';
+import { OwnedGame } from '../games/owned-game.entity';
 import { v4 as uuidv4 } from 'uuid';
 import { In } from 'typeorm';
 import axios from 'axios';
@@ -23,18 +23,18 @@ import {
   FriendItem,
   FriendStats,
   RedisCache,
-} from './get-friends.dto';
+} from '../../myfriends/get-friends.dto';
 import {
   GetCommonGamesDto,
   CommonGamesResponse,
   CommonGame,
-} from './get-common-games.dto';
+} from '../../myfriends/get-common-games.dto';
 import {
   GetAchievementCompareDto,
   AchievementCompareResponse,
   ComparedAchievementDetail,
-} from './get-achievement-compare.dto';
-import { SteamService } from '../integrations/steam/steam.service';
+} from '../../myfriends/get-achievement-compare.dto';
+import { SteamService } from '../../integrations/steam/steam.service';
 
 interface SteamFriend {
   steamid: string;

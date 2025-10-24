@@ -1,8 +1,8 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { FriendsController } from '../../myfriends/friends.controller';
-import { FriendsService } from '../../myfriends/friends.service';
+import { FriendsController } from './friends.controller';
+import { FriendsService } from './friends.service';
 import { Friend } from './friends.entity';
 import { User } from '../users/user.entity';
 import { OwnedGame } from '../games/owned-game.entity';

@@ -9,7 +9,7 @@ import { UsersRepository } from '../src/domain/users/users.repository';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { REDIS } from 'src/infra/redis/redis.constants';
-import { FriendsService } from '../src/myfriends/friends.service';
+import { FriendsService } from '../src/domain/friends/friends.service';
 import { UpsertService } from '../src/api/upsert.service';
 import axios from 'axios';
 import { Server } from 'http';

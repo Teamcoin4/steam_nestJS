@@ -16,7 +16,7 @@ import { UsersRepository } from '../domain/users/users.repository';
 import { User } from 'src/domain/users/user.entity';
 import { myGamesIdx, profileIdx } from 'src/common/cache/keys';
 import { OwnedGameRepository } from 'src/domain/games/owned-game.repository';
-import { FriendsService } from '../myfriends/friends.service';
+import { FriendsService } from '../domain/friends/friends.service';
 
 const OP = 'https://steamcommunity.com/openid/login';
 
