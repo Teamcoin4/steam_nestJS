@@ -1,7 +1,7 @@
 // friendService
 
 import { Injectable } from '@nestjs/common';
-import { FriendsRepository } from '../domain/friend/friend.repository';
+import { FriendsRepository } from '../domain/friends/friends.repository';
 import { FriendDto } from '../dto/friends.dto';
 
 @Injectable()
@@ -20,8 +20,8 @@ export class FriendsService {
       userId: f.userId,
       friendId: f.friendId,
       friend_since: f.friend_since,
-      created_at: f.created_at,
-      updated_at: f.updated_at,
+      created_at: f.createdAt,
+      updated_at: f.updatedAt,
     }));
   }
 
