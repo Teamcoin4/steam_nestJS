@@ -1,21 +1,21 @@
-// dashboardService
+// src/dashboard/dashboard.service.ts
 
 import {
   Injectable,
   UnauthorizedException,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../domain/users/user.entity';
 import { OwnedGame } from '../domain/games/owned-game.entity';
 import { Game } from '../domain/games/game.entity';
-import { Friend } from 'src/domain/friends/friends.entity';
+import { Friend } from '../domain/friends/friends.entity';
 import { ownedGameDto } from '../dto/ownedGame.dto';
 import { FriendDto } from '../dto/friends.dto';
 import { DashboardDataDto } from '../dto/dashboardData.dto';
 import { DashboardResponseDto } from '../dto/dashboardResponse.dto';
 import { SummaryDto } from '../dto/summary.dto';
-import { InjectRepository } from '@nestjs/typeorm';
 
 @Injectable()
 export class DashboardService {
@@ -29,23 +29,21 @@ export class DashboardService {
     @InjectRepository(Friend)
     private readonly friendRepository: Repository<Friend>,
   ) {
-    /* 공백 오류 */
+    /* 공백오류 */
   }
 
+  /**
+   * 대시보드 데이터 조회 (캐싱은 컨트롤러에서 처리)
+   */
   async getSteamDashboard(userId: number): Promise<DashboardResponseDto> {
     try {
-      // 유저 정보
       const user = await this.userRepository.findOneBy({ id: userId });
       if (!user) {
-        // userId가 없거나 만료된 경우
         throw new UnauthorizedException('User session expired or not found');
       }
 
-      // 소유 게임 & 최근 플레이
-      const ownedGames: OwnedGame[] = await this.ownedGameRepository.find({
-        where: {
-          userId,
-        },
+      const ownedGames = await this.ownedGameRepository.find({
+        where: { userId },
         relations: ['game'],
       });
 
@@ -62,12 +60,12 @@ export class DashboardService {
         last_played_at: g.lastPlayedAt ?? new Date(0),
       }));
 
-      // summary
-      const mostPlayed = oGames.reduce(
-        (prev, curr) =>
-          curr.playtime_forever > prev.playtime_forever ? curr : prev,
-        oGames[0],
-      );
+      const mostPlayed =
+        oGames.length > 0
+          ? oGames.reduce((prev, curr) =>
+              curr.playtime_forever > prev.playtime_forever ? curr : prev,
+            )
+          : null;
 
       const summary: SummaryDto = {
         total_games: oGames.length,
@@ -79,24 +77,22 @@ export class DashboardService {
           (sum, g) => sum + g.playtime_2weeks,
           0,
         ),
-        most_played_game: mostPlayed,
+        most_played_game: mostPlayed ?? null,
         last_played_at: oGames[0]?.last_played_at ?? new Date(0),
       };
 
-      // 친구
-      const friends: Friend[] = await this.friendRepository.find({
+      const friends = await this.friendRepository.find({
         where: { userId },
       });
       const friendDtos: FriendDto[] = friends.map((f) => ({
         id: f.id,
         userId: f.userId,
         friendId: f.friendId,
-        friend_since: f.friend_since ?? undefined, // Date | undefined
-        created_at: f.createdAt,
-        updated_at: f.updatedAt,
+        friend_since: f.friend_since ?? undefined,
+        created_at: f.created_at,
+        updated_at: f.updated_at,
       }));
 
-      // dashboard data
       const data: DashboardDataDto = {
         profile: {
           steamid: user.steamId,
@@ -122,14 +118,8 @@ export class DashboardService {
       };
 
       return { data, error: null };
-    } catch (err) {
-      if (err instanceof UnauthorizedException) {
-        // 401 예외는 그대로 던짐
-        throw err;
-      }
-      // 그 외 예외는 500 처리
-      console.error('DashboardService error:', err);
-      throw new InternalServerErrorException('Failed to load dashboard');
+    } catch {
+      throw new InternalServerErrorException('Failed to load dashboard data');
     }
   }
 }

@@ -11,12 +11,12 @@ import { AppController } from './app.controller';
 import { AuthController } from './auth/auth.controller';
 import { HealthController } from './infra/redis/redis-health.controller';
 import { DashboardController } from './dashboard/dashboard.controller';
-import { UserAchievementController } from './user_achievement/user_achievement.controller';
+// import { UserAchievementController } from './user_achievement/user_achievement.controller';
 
 // Services
 import { AppService } from './app.service';
 import { DashboardService } from './dashboard/dashboard.service';
-import { userAchievementService } from './user_achievement/user_achievement.service';
+// import { userAchievementService } from './user_achievement/user_achievement.service';
 
 // Modules
 import { SteamModule } from './integrations/steam/steam.module';
@@ -29,7 +29,7 @@ import { RedisModule } from './infra/redis/redis.module';
 import { CacheAsideModule } from './common/cache/cache-aside.module';
 import { FriendsModule } from './domain/friends/friends.module';
 import { DashboardModule } from './dashboard/dashboard.module';
-import { AchievementModule } from './achievement/achievement.module';
+import { UserAchievementModule } from './user_achievement/user_achievement.module';
 
 // Entities
 import { OwnedGame } from './domain/games/owned-game.entity';
@@ -76,7 +76,7 @@ import { Friend } from './domain/friends/friends.entity';
         password: process.env.DB_PASS,
         database: process.env.DB_NAME,
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: false,
         logging: process.env.TYPEORM_LOGGING === 'true',
         migrations: ['dist/migrations/*.js'],
         migrationsTransactionMode: 'each',
@@ -105,20 +105,20 @@ import { Friend } from './domain/friends/friends.entity';
     CacheAsideModule,
     FriendsModule,
     DashboardModule,
-    AchievementModule,
+    UserAchievementModule,
   ],
   controllers: [
     AppController,
     HealthController,
     AuthController,
     DashboardController,
-    UserAchievementController,
   ],
   providers: [
     AppService,
     DashboardService,
-    userAchievementService,
     { provide: APP_INTERCEPTOR, useClass: EtagInterceptor },
   ],
 })
-export class AppModule {}
+export class AppModule {
+  /* 공백오류 */
+}

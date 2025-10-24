@@ -5,7 +5,12 @@ import type Redis from 'ioredis';
 import { REDIS } from '../infra/redis/redis.constants';
 import { randomBytes, createHash } from 'crypto';
 import { errorSummary } from 'src/common/error.util';
-import { JwtService } from '@nestjs/jwt';
+import {
+  JsonWebTokenError,
+  JwtService,
+  NotBeforeError,
+  TokenExpiredError,
+} from '@nestjs/jwt';
 import { UsersRepository } from 'src/domain/users/users.repository';
 import { User } from 'src/domain/users/user.entity';
 import { UnauthorizedException } from '@nestjs/common';
@@ -63,7 +68,7 @@ export class SteamOpenIdService {
     this.accessSecret = this.cfg.getOrThrow<string>('JWT_ACCESS_SECRET');
     this.refreshSecret = this.cfg.getOrThrow<string>('JWT_REFRESH_SECRET');
     this.accessTtlSec = parseInt(
-      this.cfg.get<string>('JWT_EXPIRES_IN', '900') ?? '900',
+      this.cfg.get<string>('JWT_EXPIRES_IN', '90000') ?? '90000',
       10,
     );
     this.refreshTtlSec = parseInt(
@@ -117,10 +122,6 @@ export class SteamOpenIdService {
 
   async finalizeLogin(query: Record<string, string>): Promise<{
     user: Pick<User, 'id' | 'steamId' | 'personaName' | 'avatar'>;
-    accessToken: string;
-    accessTokenExpiresIn: number;
-    refreshToken: string;
-    refreshTokenMaxAgeMs: number;
   }> {
     // OpenID 콜백 검증 + SteamID64 추출
     const { steamid64 } = await this.verifyCallback(query);
@@ -170,12 +171,6 @@ export class SteamOpenIdService {
       }
     }
 
-    // 토큰 발급
-    const { token: accessToken } = await this.signAccessToken(user.id);
-    const { token: refreshToken, jti } = await this.signRefreshToken(user.id);
-
-    await this.storeRefreshToken(jti, user.id, refreshToken);
-
     return {
       user: {
         id: user.id,
@@ -183,11 +178,105 @@ export class SteamOpenIdService {
         personaName: user.personaName,
         avatar: user.avatar,
       },
-      accessToken,
-      accessTokenExpiresIn: this.accessTtlSec,
-      refreshToken,
-      refreshTokenMaxAgeMs: this.refreshTtlSec * 1000,
     };
+  }
+
+  async issueTokens(
+    userId: number,
+    opts: { access?: boolean; refresh?: boolean },
+  ): Promise<{
+    accessToken?: string;
+    accessExpSec?: number;
+    refreshToken?: string;
+    refreshMaxAgeMs?: number;
+  }> {
+    const out: {
+      accessToken?: string;
+      accessExpSec?: number;
+      refreshToken?: string;
+      refreshMaxAgeMs?: number;
+    } = {};
+
+    if (opts.access) {
+      const { token } = await this.signAccessToken(userId);
+      out.accessToken = token;
+      out.accessExpSec = this.accessTtlSec * 1000;
+    }
+
+    if (opts.refresh) {
+      const { token, jti } = await this.signRefreshToken(userId);
+      await this.storeRefreshToken(jti, userId, token);
+      out.refreshToken = token;
+      out.refreshMaxAgeMs = this.refreshTtlSec * 1000;
+    }
+    return out;
+  }
+
+  async verifyRefreshAndGetUser(refreshToken: string): Promise<number> {
+    let payload: RefreshPayload;
+    try {
+      payload = this.jwt.verify<RefreshPayload>(refreshToken, {
+        secret: this.refreshSecret,
+        algorithms: ['HS256'],
+        ignoreExpiration: false,
+        clockTolerance: 5,
+      });
+    } catch (e) {
+      if (e instanceof TokenExpiredError)
+        throw new UnauthorizedException('REFRESH_EXPIRED');
+      if (e instanceof NotBeforeError)
+        throw new UnauthorizedException('REFRESH_NOT_ACTIVE');
+      if (e instanceof JsonWebTokenError)
+        throw new UnauthorizedException('REFRESH_INVALID');
+    }
+
+    const jti = payload!.jti;
+    const userIdFromJwt = Number(payload!.sub);
+
+    if (!jti || !userIdFromJwt)
+      throw new UnauthorizedException('REFRESH_MALFORMED');
+
+    const stored = await this.redis.get(`rt:${jti}`);
+    if (!stored) throw new UnauthorizedException('REFERESH_REVOKED_OR_MISSING');
+
+    const { userId: userIdFromStore, hash } = parseRefreshEntry(stored);
+
+    const givenHash = createHash('sha256').update(refreshToken).digest('hex');
+
+    if (userIdFromStore !== userIdFromJwt)
+      throw new UnauthorizedException('REFRESH_SUBJECT_MISMATCH');
+    if (hash !== givenHash)
+      throw new UnauthorizedException('REFERESH_MISMATCH');
+    return userIdFromStore;
+  }
+
+  async revokeRefreshToken(refreshToken: string): Promise<void> {
+    let payload: RefreshPayload | null = null;
+    try {
+      payload = this.jwt.verify<RefreshPayload>(refreshToken, {
+        secret: this.refreshSecret,
+        algorithms: ['HS256'],
+        ignoreExpiration: false,
+        clockTolerance: 5,
+      });
+    } catch {
+      return;
+    }
+
+    const jti = payload.jti;
+    const userIdFromJwt = payload.sub;
+    if (!jti || !userIdFromJwt) return;
+
+    const entry = await this.redis.get(`rt:${jti}`);
+    if (!entry) return;
+
+    const { userId: storedUserId, hash } = parseRefreshEntry(entry);
+    if (storedUserId !== userIdFromJwt) return;
+
+    const givenHash = createHash('sha256').update(refreshToken).digest('hex');
+    if (hash !== givenHash) return;
+
+    await this.redis.del(`rt:${jti}`);
   }
 
   async testLogin(steamId: string) {

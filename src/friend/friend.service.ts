@@ -20,8 +20,8 @@ export class FriendsService {
       userId: f.userId,
       friendId: f.friendId,
       friend_since: f.friend_since,
-      created_at: f.createdAt,
-      updated_at: f.updatedAt,
+      created_at: f.created_at,
+      updated_at: f.updated_at,
     }));
   }
 

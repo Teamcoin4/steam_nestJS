@@ -1,5 +1,3 @@
-// src/friends/get-common-games.dto.ts 파일
-
 import {
   IsOptional,
   IsEnum,
@@ -10,58 +8,119 @@ import {
   IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class GetCommonGamesDto {
-  @IsOptional()
-  @IsString()
-  search?: string;
-
-  @IsOptional()
-  @IsEnum(['playtime', 'name', 'recent'])
-  sortBy?: 'playtime' | 'name' | 'recent' = 'playtime';
-
+  @ApiPropertyOptional({ description: '페이지 번호', minimum: 1, default: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   page: number = 1;
 
+  @ApiPropertyOptional({
+    description: '페이지당 항목 수',
+    minimum: 1,
+    maximum: 100,
+    default: 30,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
-  limit: number = 20;
+  limit: number = 30;
 
+  @ApiPropertyOptional({
+    enum: [
+      'name',
+      'you_playtime',
+      'friend_playtime',
+      'last_played',
+      'recent_overlap',
+    ],
+    description: '정렬 기준',
+    default: 'name',
+  })
+  @IsOptional()
+  @IsEnum([
+    'name',
+    'you_playtime',
+    'friend_playtime',
+    'last_played',
+    'recent_overlap',
+  ])
+  sortBy?:
+    | 'name'
+    | 'you_playtime'
+    | 'friend_playtime'
+    | 'last_played'
+    | 'recent_overlap' = 'name';
+
+  @ApiPropertyOptional({
+    enum: ['recent_overlap', 'installed_overlap'],
+    description: '필터 조건',
+  })
+  @IsOptional()
+  @IsEnum(['recent_overlap', 'installed_overlap'])
+  filter?: 'recent_overlap' | 'installed_overlap';
+
+  @ApiPropertyOptional({ description: '캐시 무시하고 최신화', default: false })
   @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()
-  ascending?: boolean = true;
+  force?: boolean = false;
+
+  @ApiPropertyOptional({ description: '표시 언어', default: 'korean' })
+  @IsOptional()
+  @IsString()
+  lang?: string = 'korean';
+
+  @ApiPropertyOptional({ description: '검색어' })
+  @IsOptional()
+  @IsString()
+  search?: string;
 }
 
-// 🚨 'export' 키워드 추가
+// Response 타입 정의
 export interface CommonGame {
-  appid: number;
+  app_id: number;
   name: string;
-  playtime_forever_user: number;
-  playtime_forever_friend: number;
-  img_icon_url?: string;
-  headerImageUrl: string;
-  rtime_last_played_user?: number;
-  rtime_last_played_friend?: number;
+  icon: string;
+  you: {
+    playtime_forever: number;
+    playtime_2weeks?: number;
+    last_played_at?: string;
+  };
+  friend: {
+    playtime_forever: number;
+    playtime_2weeks?: number;
+    last_played_at?: string;
+  };
+  overlap: {
+    recent: boolean;
+    installed: boolean;
+  };
 }
 
-// 🚨 'export' 키워드 추가
 export interface CommonGamesResponse {
-  data: CommonGame[];
-  meta: {
-    userSteamId: string;
-    friendSteamId: string;
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNext: boolean;
-    hasPrev: boolean;
+  friend: {
+    steamid: string;
+    persona_name: string;
   };
+  summary: {
+    total: number;
+    recent_overlap: number;
+  };
+  items: CommonGame[];
+  paging: {
+    page: number;
+    size: number;
+    total: number;
+  };
+  links: {
+    self: string;
+    refresh: string;
+  };
+  trace_id: string;
 }

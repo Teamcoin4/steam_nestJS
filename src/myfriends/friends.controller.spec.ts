@@ -1,36 +1,55 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { FriendsController } from './friends.controller';
 import { FriendsService } from './friends.service';
-import { GetFriendsDto } from './get-friends.dto';
+import { GetFriendsDto, FriendListResponse } from './get-friends.dto';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
-import { PaginatedResponse } from 'src/common/types/pagination.types';
-import { FriendWithExtra } from 'src/common/types/friend-with-extra.types';
+import { User } from '../domain/users/user.entity';
+import { getRepositoryToken } from '@nestjs/typeorm';
 
 describe('FriendsController', () => {
   let controller: FriendsController;
   let getFriendsMock: jest.Mock;
 
   beforeEach(async () => {
+    // ✅ FriendListResponse 구조에 맞게 수정
     getFriendsMock = jest.fn().mockResolvedValue({
-      data: [{ id: 1, userId: 1, friendId: 2, status: 'accepted' }],
-      meta: {
-        page: 1,
-        limit: 30,
+      summary: {
         total: 1,
-        totalPages: 1,
-        hasNext: false,
-        hasPrev: false,
+        stale: false,
       },
+      items: [
+        {
+          steamid: '76561198000000002',
+          persona_name: 'TestUser',
+          avatar: 'https://example.com/avatar.jpg',
+          relationship: 'friend',
+          links: {
+            profile: '/api/v1/friends/76561198000000002',
+            common_games: '/api/v1/friends/76561198000000002/common-games',
+            compare_achievements:
+              '/api/v1/friends/76561198000000002/games/{gameId}/achievements/compare',
+          },
+        },
+      ],
+      paging: {
+        page: 1,
+        size: 30,
+        total: 1,
+      },
+      links: {
+        self: '/api/v1/friends?page=1&size=30',
+        refresh: '/api/v1/friends?force=true',
+      },
+      trace_id: 'test-trace-id',
     });
 
     const module: TestingModule = await Test.createTestingModule({
       imports: [
-        // ThrottlerModule 설정을 'throttlers' 배열 형태로 수정합니다.
         ThrottlerModule.forRoot([
           {
-            ttl: 60, // 예시 값 (실제 Throttler 설정과 동일하게)
-            limit: 10, // 예시 값
+            ttl: 60,
+            limit: 10,
           },
         ]),
       ],
@@ -46,6 +65,12 @@ describe('FriendsController', () => {
           provide: APP_GUARD,
           useClass: ThrottlerGuard,
         },
+        {
+          provide: getRepositoryToken(User),
+          useValue: {
+            findOne: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -57,21 +82,25 @@ describe('FriendsController', () => {
   });
 
   it('should return friend list', async () => {
-    // request 객체 대신 string 타입의 userId를 전달
-    const userId = '1'; // 컨트롤러가 기대하는 string 타입으로 전달
+    const userId = '1';
 
+    // ✅ limit → size로 변경
     const query: GetFriendsDto = {
       page: 1,
-      limit: 30,
-      sortBy: 'name',
+      size: 30,
+      sort: 'name',
     };
 
-    // 컨트롤러 메서드에 맞게 호출
-    const result: PaginatedResponse<FriendWithExtra> =
-      await controller.getFriends(userId, query);
+    // ✅ 반환 타입 수정
+    const result: FriendListResponse = await controller.getFriends(
+      userId,
+      query,
+    );
 
-    // 서비스 메서드 호출 시에는 숫자로 변환됐는지 확인
     expect(getFriendsMock).toHaveBeenCalledWith(1, query);
-    expect(result.data).toHaveLength(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.summary.total).toBe(1);
+    expect(result.paging.page).toBe(1);
+    expect(result.paging.size).toBe(30);
   });
 });
