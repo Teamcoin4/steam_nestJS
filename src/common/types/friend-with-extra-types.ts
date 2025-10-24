@@ -3,8 +3,8 @@ export interface FriendWithExtra {
   userId: number; // 사용자 ID
   friendId: number; // 친구 ID
   status: string; // 친구 상태 ('pending', 'accepted', 'blocked' 등)
-  createdAt?: Date; // 친구 관계 생성 시간 (선택적)
-  updatedAt?: Date; // 친구 관계 업데이트 시간 (선택적)
+  created_at?: Date; // 친구 관계 생성 시간 (선택적)
+  updated_at?: Date; // 친구 관계 업데이트 시간 (선택적)
 
   // 추가 정보 필드 (실제 프로젝트에 맞게 조정하세요)
   friendUser?: {

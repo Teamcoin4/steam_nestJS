@@ -1,7 +1,7 @@
 export class FriendResponseDto {
   id!: number;
   userId!: number;
-  friendId!: number;
+  friendId!: string;
   status!: string;
-  createdAt!: Date;
+  created_at!: Date;
 }

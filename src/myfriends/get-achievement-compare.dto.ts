@@ -108,7 +108,7 @@ export interface ComparedAchievementDetail {
 }
 
 export type ComparedUser = {
-  steamid: number;
+  steamid: string;
   persona_name: string;
   avatar: string;
 };
@@ -120,7 +120,7 @@ export type AchievementCompareResponse = {
     icon: string | null;
   };
   friend: {
-    steamid: number;
+    steamid: string;
     persona_name: string;
     avatar: string;
   };

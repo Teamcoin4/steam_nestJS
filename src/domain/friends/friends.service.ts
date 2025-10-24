@@ -11,36 +11,63 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import type { Cache } from 'cache-manager';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Friend, FriendStatus } from '../domain/friends/friends.entity';
-import { User } from '../domain/users/user.entity';
-import { OwnedGame } from '../domain/games/owned-game.entity';
+import { Friend, FriendStatus } from './friends.entity';
+import { User } from '../users/user.entity';
+import { OwnedGame } from '../games/owned-game.entity';
 import { v4 as uuidv4 } from 'uuid';
+import { In } from 'typeorm';
+import axios from 'axios';
 import {
   GetFriendsDto,
   FriendListResponse,
   FriendItem,
   FriendStats,
   RedisCache,
-} from './get-friends.dto';
+} from '../../myfriends/get-friends.dto';
 import {
   GetCommonGamesDto,
   CommonGamesResponse,
   CommonGame,
-} from './get-common-games.dto';
+} from '../../myfriends/get-common-games.dto';
 import {
   GetAchievementCompareDto,
   AchievementCompareResponse,
   ComparedAchievementDetail,
-} from './get-achievement-compare.dto';
-import { SteamService } from '../integrations/steam/steam.service';
+} from '../../myfriends/get-achievement-compare.dto';
+import { SteamService } from '../../integrations/steam/steam.service';
 
-interface FriendIdQueryResult {
-  friendId: number;
+interface SteamFriend {
+  steamid: string;
+  relationship: string;
+  friend_since: number;
+}
+
+interface SteamFriendsListResponse {
+  friendslist?: {
+    friends: SteamFriend[];
+  };
+}
+
+interface SteamPlayer {
+  steamid: string;
+  personaname?: string;
+  avatarfull?: string;
+}
+
+interface SteamPlayerSummariesResponse {
+  response?: {
+    players: SteamPlayer[];
+  };
+}
+
+interface FriendUserIdQueryResult {
+  friendUserId: number;
 }
 
 @Injectable()
 export class FriendsService {
   private readonly CACHE_TTL = 300000; // 5분
+  private readonly CACHE_ACHIEVEMENT_TTL = 60000; // 1분
 
   constructor(
     @InjectRepository(Friend)
@@ -111,11 +138,11 @@ export class FriendsService {
         // 친구 userId(friendId)만 먼저 가져오기
         const friendIdsResult = await query
           .clone()
-          .select('friend.friendId', 'friendId') // 별칭으로 raw 키 고정
-          .getRawMany<FriendIdQueryResult>();
+          .select('friendUser.id', 'friendUserId') // 별칭으로 raw 키 고정
+          .getRawMany<FriendUserIdQueryResult>();
 
         const allFriendUserIds: number[] = friendIdsResult
-          .map((r) => Number(r.friendId))
+          .map((r) => Number(r.friendUserId))
           .filter((n) => Number.isFinite(n));
 
         if (allFriendUserIds.length === 0) {
@@ -139,7 +166,7 @@ export class FriendsService {
             return this.buildEmptyResponse(dto, traceId);
           }
 
-          query.andWhere('friend.friendId IN (:...filteredIds)', {
+          query.andWhere('friendUser.id IN (:...filteredIds)', {
             filteredIds: filteredFriendUserIds,
           });
 
@@ -219,6 +246,155 @@ export class FriendsService {
     }
   }
 
+  /**
+   * Steam API에서 친구 목록을 가져와서 DB에 동기화
+   */
+  async syncFriendsFromSteam(user: User, steamApiKey: string): Promise<void> {
+    try {
+      console.log(
+        `🔄 친구 목록 동기화 시작: userId=${user.id}, steamId=${user.steamId}`,
+      );
+
+      // 1. Steam API 호출
+      const { data } = await axios.get<SteamFriendsListResponse>(
+        'https://api.steampowered.com/ISteamUser/GetFriendList/v0001/',
+        {
+          params: {
+            key: steamApiKey,
+            steamid: user.steamId,
+            relationship: 'friend',
+          },
+          timeout: 5000,
+        },
+      );
+
+      const steamFriends = data?.friendslist?.friends ?? [];
+      console.log(`📊 Steam에서 가져온 친구 수: ${steamFriends.length}`);
+
+      if (steamFriends.length === 0) {
+        console.log('✅ 친구가 없음 - 동기화 완료');
+        return;
+      }
+
+      // 2. 친구들의 Steam ID 목록
+      const friendSteamIds: string[] = steamFriends.map((f) => f.steamid);
+
+      // 3. 친구들을 User 테이블에 upsert
+      await this.ensureFriendUsersExist(friendSteamIds, steamApiKey);
+
+      // 4. DB에서 친구 User 정보 조회
+      const friendUsers = await this.userRepository.find({
+        where: { steamId: In(friendSteamIds) },
+        select: ['id', 'steamId'],
+      });
+
+      const steamIdToUserId = new Map<string, number>();
+      friendUsers.forEach((u) => {
+        steamIdToUserId.set(u.steamId, u.id);
+      });
+
+      // 5. 기존 친구 관계 조회
+      const existingFriends = await this.friendRepository.find({
+        where: { userId: user.id },
+        select: ['friendId'],
+      });
+
+      const existingFriendIds = new Set(existingFriends.map((f) => f.friendId));
+
+      // 6. 새로운 친구 관계만 추가
+      const newFriends: Friend[] = [];
+
+      for (const steamFriend of steamFriends) {
+        const friendSteamId = steamFriend.steamid;
+
+        // 이미 존재하는 관계는 스킵
+        if (existingFriendIds.has(friendSteamId)) {
+          continue;
+        }
+
+        const friend = this.friendRepository.create({
+          userId: user.id,
+          friendId: friendSteamId,
+          status: FriendStatus.ACCEPTED,
+          friend_since: new Date(steamFriend.friend_since * 1000),
+        });
+
+        newFriends.push(friend);
+      }
+
+      // 7. 일괄 저장
+      if (newFriends.length > 0) {
+        await this.friendRepository.save(newFriends);
+        console.log(`✅ 새로운 친구 ${newFriends.length}명 추가됨`);
+      } else {
+        console.log('✅ 이미 모든 친구가 동기화되어 있음');
+      }
+
+      console.log(`✅ 친구 목록 동기화 완료: 총 ${steamFriends.length}명`);
+    } catch (error) {
+      console.error('❌ 친구 목록 동기화 실패:', error);
+    }
+  }
+
+  /**
+   * 친구 User들이 DB에 없으면 생성
+   */
+  private async ensureFriendUsersExist(
+    friendSteamIds: string[],
+    steamApiKey: string,
+  ): Promise<void> {
+    try {
+      // 1. 이미 존재하는 유저 확인
+      const existingUsers = await this.userRepository.find({
+        where: { steamId: In(friendSteamIds) },
+        select: ['steamId'],
+      });
+
+      const existingSteamIds = new Set(existingUsers.map((u) => u.steamId));
+
+      // 2. 없는 유저들만 필터링
+      const missingSteamIds = friendSteamIds.filter(
+        (id) => !existingSteamIds.has(id),
+      );
+
+      if (missingSteamIds.length === 0) {
+        return;
+      }
+
+      console.log(`📝 새로운 친구 User ${missingSteamIds.length}명 생성 중...`);
+
+      // 3. Steam API로 친구들의 프로필 정보 가져오기
+      const { data } = await axios.get<SteamPlayerSummariesResponse>(
+        'https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/',
+        {
+          params: {
+            key: steamApiKey,
+            steamids: missingSteamIds.join(','),
+          },
+          timeout: 5000,
+        },
+      );
+
+      const players = data?.response?.players ?? [];
+
+      // 4. User 생성
+      const newUsers = players.map((player) =>
+        this.userRepository.create({
+          steamId: player.steamid,
+          personaName: player.personaname ?? null,
+          avatar: player.avatarfull ?? null,
+        }),
+      );
+
+      if (newUsers.length > 0) {
+        await this.userRepository.save(newUsers);
+        console.log(`✅ 친구 User ${newUsers.length}명 생성 완료`);
+      }
+    } catch (error) {
+      console.error('❌ 친구 User 생성 실패:', error);
+    }
+  }
+
   // ==================== getFriends 헬퍼 메서드 ====================
 
   private async getFriendsFromCache(
@@ -293,14 +469,14 @@ export class FriendsService {
       this.calculateRecentOverlapOptimized(userId, friendUserId),
       this.userRepository.findOne({
         where: { id: friendUserId },
-        select: ['updatedAt'],
+        select: ['updated_at'],
       }),
     ]);
 
     return {
       mutual_owned: mutualOwned,
       recent_overlap: recentOverlap,
-      last_online_at: friendUser?.updatedAt?.toISOString() ?? null,
+      last_online_at: friendUser?.updated_at?.toISOString() ?? null,
     };
   }
 
@@ -354,7 +530,7 @@ export class FriendsService {
         query.orderBy('friendUser.personaName', 'ASC', 'NULLS LAST');
         break;
       case 'last_online':
-        query.orderBy('friendUser.updatedAt', 'DESC', 'NULLS LAST');
+        query.orderBy('friendUser.updated_at', 'DESC', 'NULLS LAST');
         break;
       default:
         query.orderBy('friend.created_at', 'DESC');
@@ -366,7 +542,7 @@ export class FriendsService {
     friend: Friend,
     statsMap: Map<number, FriendStats> | null,
   ): FriendItem {
-    const steamId = friend.friend?.steamId ?? 0; // number로 고정
+    const steamId = friend.friend?.steamId ?? ''; // string로 고정
     const personaName = friend.friend?.personaName ?? null;
     const avatar = friend.friend?.avatar ?? null;
 
@@ -376,13 +552,15 @@ export class FriendsService {
       avatar: avatar,
       relationship: friend.status as 'friend' | 'pending' | 'blocked',
       links: {
-        profile: `/api/v1/friends/${String(steamId)}`,
-        common_games: `/api/v1/friends/${String(steamId)}/common-games`,
-        compare_achievements: `/api/v1/friends/${String(steamId)}/games/{gameId}/achievements/compare`,
+        profile: `/api/v1/friends/${steamId}`,
+        common_games: `/api/v1/friends/${steamId}/common-games`,
+        compare_achievements: `/api/v1/friends/${steamId}/games/{gameId}/achievements/compare`,
       },
     };
-    if (statsMap && friend.friendId != null) {
-      const stats = statsMap.get(friend.friendId);
+    // statsMap은 내부 User.id(number)로 키잉되어 있음
+    const friendUserId = friend.friend?.id;
+    if (statsMap && friendUserId != null) {
+      const stats = statsMap.get(friendUserId);
       if (stats) item.stats = stats;
     }
 
@@ -490,7 +668,7 @@ export class FriendsService {
     }
 
     const existing = await this.friendRepository.findOne({
-      where: { userId, friendId: friendUser.id }, // Friend.friendId는 User.id
+      where: { userId, friendId: friendUser.steamId }, // Friend.friendId는 User.steamId
     });
 
     if (existing) {
@@ -499,7 +677,7 @@ export class FriendsService {
 
     const friend = this.friendRepository.create({
       userId,
-      friendId: friendUser.id, // 내부 id 저장
+      friendId: friendUser.steamId, // steamId 저장
       status: FriendStatus.PENDING,
     });
 
@@ -529,7 +707,7 @@ export class FriendsService {
     const friend = await this.friendRepository.findOne({
       where: {
         userId: friendUserId,
-        friendId: user.id, // 요청 보낸 사람이 보낸 대상의 내부 id
+        friendId: friendUser.steamId, // 요청 보낸 사람이 보낸 대상의 steamId
         status: FriendStatus.PENDING,
       },
     });
@@ -543,7 +721,7 @@ export class FriendsService {
 
     const reverseFriend = this.friendRepository.create({
       userId,
-      friendId: friendUser.id, // 역방향도 내부 id
+      friendId: friendUser.steamId, // 역방향도 steamId
       status: FriendStatus.ACCEPTED,
     });
     await this.friendRepository.save(reverseFriend);
@@ -574,8 +752,8 @@ export class FriendsService {
     }
 
     await this.friendRepository.delete([
-      { userId, friendId: friendUser.id },
-      { userId: friendUserId, friendId: user.id },
+      { userId, friendId: friendUser.steamId },
+      { userId: friendUserId, friendId: user.steamId },
     ]);
 
     await Promise.all([
@@ -596,13 +774,13 @@ export class FriendsService {
     }
 
     let friend = await this.friendRepository.findOne({
-      where: { userId, friendId: friendUser.id },
+      where: { userId, friendId: friendUser.steamId },
     });
 
     if (!friend) {
       friend = this.friendRepository.create({
         userId,
-        friendId: friendUser.id,
+        friendId: friendUser.steamId,
         status: FriendStatus.BLOCKED,
       });
     } else {
@@ -630,7 +808,7 @@ export class FriendsService {
     }
 
     const friend = await this.friendRepository.findOne({
-      where: { userId, friendId: friendUser.id },
+      where: { userId, friendId: friendUser.steamId },
     });
 
     return friend ? friend.status : 'none';
@@ -721,8 +899,8 @@ export class FriendsService {
           total,
         },
         links: {
-          self: this.buildCommonGamesSelfLink(String(friend.steamId), dto),
-          refresh: this.buildCommonGamesRefreshLink(String(friend.steamId)),
+          self: this.buildCommonGamesSelfLink(friend.steamId, dto),
+          refresh: this.buildCommonGamesRefreshLink(friend.steamId),
         },
         trace_id: traceId,
       };
@@ -772,7 +950,7 @@ export class FriendsService {
     const friendship = await this.friendRepository.findOne({
       where: {
         userId,
-        friendId: friendUser.id, // 내부 id로 확인
+        friendId: friendUser.steamId, // steamId로 확인
         status: FriendStatus.ACCEPTED,
       },
     });
@@ -941,7 +1119,7 @@ export class FriendsService {
     friendUserId: number,
     dto: GetCommonGamesDto,
   ): string {
-    const [id1, id2] = [userId, friendUserId].sort((a, b) => a - b);
+    const [id1, id2] = [String(userId), String(friendUserId)].sort();
 
     const params: (string | number)[] = [
       id1,
@@ -966,7 +1144,7 @@ export class FriendsService {
       const redisStore = this.cacheManager.stores as unknown as RedisCache;
 
       if (redisStore && typeof redisStore.keys === 'function') {
-        const [id1, id2] = [userId, friendUserId].sort((a, b) => a - b);
+        const [id1, id2] = [String(userId), String(friendUserId)].sort();
         const pattern = `friends:common-games:${id1}:${id2}:*`;
         const keys: string[] = await redisStore.keys(pattern);
 
@@ -1072,12 +1250,12 @@ export class FriendsService {
         },
         links: {
           self: this.buildAchievementCompareSelfLink(
-            String(friend.steamId),
+            friend.steamId,
             gameId,
             dto,
           ),
           refresh: this.buildAchievementCompareRefreshLink(
-            String(friend.steamId),
+            friend.steamId,
             gameId,
           ),
         },
@@ -1321,7 +1499,7 @@ export class FriendsService {
     gameId: number,
     dto: GetAchievementCompareDto,
   ): string {
-    const [id1, id2] = [userId, friendUserId].sort((a, b) => a - b);
+    const [id1, id2] = [String(userId), String(friendUserId)].sort();
 
     const params: (string | number)[] = [
       id1,
@@ -1348,7 +1526,7 @@ export class FriendsService {
       const redisStore = this.cacheManager.stores as unknown as RedisCache;
 
       if (redisStore && typeof redisStore.keys === 'function') {
-        const [id1, id2] = [userId, friendUserId].sort((a, b) => a - b);
+        const [id1, id2] = [String(userId), String(friendUserId)].sort();
         const pattern = `friends:achievement-compare:${id1}:${id2}:${gameId}:*`;
         const keys: string[] = await redisStore.keys(pattern);
 

@@ -7,7 +7,7 @@ import { SteamApiService, type AchievementSchema } from './steam.api.service';
 import { Game } from '../domain/games/game.entity';
 import { OwnedGame as OwnedGameEntity } from '../domain/games/owned-game.entity';
 import { User } from '../domain/users/user.entity';
-import { Friend } from '../domain/friends/friends.entity';
+import { Friend, FriendStatus } from '../domain/friends/friends.entity';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 
@@ -156,7 +156,7 @@ export class UpsertService {
     this.logger.log(`[friends] rawFromAPI=${list.length} userId=${userId}`);
 
     const friendsOnly = list; // 이미 relationship === 'friend'
-    const steamIds = friendsOnly.map((f) => f.steamid); // 문자열로 유지
+    const steamIds = friendsOnly.map((f) => f.steamid); // string 타입
     this.logger.log(
       `[friends] parsedFriends=${friendsOnly.length}, ids=${steamIds.length}`,
     );
@@ -166,22 +166,20 @@ export class UpsertService {
       return;
     }
 
-    // TODO: User.steamId가 number인 현 상태에선 정확 매칭 불가(정밀도 문제).
-    // 우선 friendId는 null로 두고, 이후 User.steamId를 string으로 이관하면서 매핑 구현.
-    const bySteamId = new Map<string, number>();
-
+    // Friend.friendId는 steamId(string)으로 저장, friend_since 필드명 사용
     const rows: Array<Partial<Friend>> = friendsOnly.map((f) => {
-      const sid = f.steamid; // 문자열
-      const since = this.friendSinceOf(f);
+      const sid = f.steamid; // 이미 string
+      const since = this.friendSinceOf(f); // epoch seconds | undefined
       return {
         userId,
-        friendSteamId: sid,
-        friendId: bySteamId.get(sid) ?? null,
-        friendSince: since ? new Date(since * 1000) : null,
+        friendId: sid, // string(steamId)
+        friend_since: since ? new Date(since * 1000) : null,
+        status: FriendStatus.ACCEPTED,
       };
     });
 
-    await this.friendsRepo.upsert(rows, ['userId', 'friendSteamId']);
+    // 엔티티의 유니크 키(userId, friendId)에 맞춰 upsert
+    await this.friendsRepo.upsert(rows, ['userId', 'friendId']);
     this.logger.log(`[friends] upserted=${rows.length}, userId=${userId}`);
   }
 

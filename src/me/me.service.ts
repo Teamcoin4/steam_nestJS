@@ -86,8 +86,8 @@ export class MeService {
           steamId: user.steamId,
           personaName: user.personaName ?? null,
           avatar: user.avatar ?? null,
-          createdAt: user.createdAt.toISOString(),
-          updatedAt: user.updatedAt.toISOString(),
+          created_at: user.created_at.toISOString(),
+          updated_at: user.updated_at.toISOString(),
         };
       },
       { ttlSec: 30, index: profileIdx(userId) },

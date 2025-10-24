@@ -1,9 +1,10 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
+import { UsersModule } from 'src/domain/users/users.module';
 import { SteamAuthController } from './auth.controller';
 import { JwtAccessStrategy } from './jwt-access.strategy';
 import { SteamOpenIdService } from './steam-openid.service';
@@ -15,6 +16,10 @@ import { OwnedGameRepository } from '../domain/games/owned-game.repository';
 import { SteamApiModule } from '../api/steam.api.module';
 import { CacheAsideModule } from '../common/cache/cache-aside.module';
 import { RedisModule } from '../infra/redis/redis.module';
+import { MeModule } from '../me/me.module';
+import { GameDomainModule } from '../domain/games/game.module';
+import { FriendsModule } from 'src/domain/friends/friends.module';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Module({
   imports: [
@@ -35,6 +40,11 @@ import { RedisModule } from '../infra/redis/redis.module';
     SteamApiModule, // to inject UpsertService
     CacheAsideModule, // CACHE_MANAGER, CacheAsideService
     RedisModule, // REDIS 클라이언트
+    UsersModule,
+    RedisModule,
+    MeModule,
+    GameDomainModule,
+    forwardRef(() => FriendsModule),
   ],
   controllers: [SteamAuthController],
   providers: [
@@ -42,7 +52,14 @@ import { RedisModule } from '../infra/redis/redis.module';
     SteamOpenIdService,
     UsersRepository,
     OwnedGameRepository,
+    JwtAuthGuard,
   ],
-  exports: [JwtModule, PassportModule],
+  exports: [
+    JwtModule,
+    PassportModule,
+    SteamOpenIdService,
+    JwtAuthGuard, //  추가
+    PassportModule,
+  ],
 })
 export class AuthModule {}

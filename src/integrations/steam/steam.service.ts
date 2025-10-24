@@ -102,7 +102,7 @@ export class SteamService {
   }
 
   // 보유 게임 목록
-  async getOwnedGames(steamId: number): Promise<{ games: OwnedGame[] }> {
+  async getOwnedGames(steamId: string): Promise<{ games: OwnedGame[] }> {
     try {
       const { data } = await this.http.get<OwnedGamesResponse>(
         `/IPlayerService/GetOwnedGames/v0001`,
@@ -152,7 +152,7 @@ export class SteamService {
   // 플레이어 업적 정보
   // 매개변수 순서는 (steamId, appId)
   async getPlayerAchievements(
-    steamId: number,
+    steamId: string,
     appId: number,
   ): Promise<{ achievements: PlayerAchievement[] }> {
     try {

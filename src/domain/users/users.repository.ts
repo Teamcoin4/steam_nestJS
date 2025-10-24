@@ -10,11 +10,11 @@ export class UsersRepository {
     private readonly repo: Repository<User>,
   ) {}
 
-  async findBySteamId(steamId: number): Promise<User | null> {
+  async findBySteamId(steamId: string): Promise<User | null> {
     return this.repo.findOne({ where: { steamId } });
   }
 
-  async upsertBySteamId(steamId: number, patch: Partial<User>): Promise<User> {
+  async upsertBySteamId(steamId: string, patch: Partial<User>): Promise<User> {
     const values: Partial<User> = { steamId, ...patch };
     await this.repo.upsert(values, ['steamId']);
     return this.findBySteamId(steamId) as Promise<User>;

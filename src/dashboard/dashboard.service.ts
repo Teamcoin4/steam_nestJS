@@ -55,8 +55,8 @@ export class DashboardService {
         icon: g.game.icon ?? undefined,
         playtime_forever: g.playtimeForever,
         playtime_2weeks: g.playtime2Weeks,
-        created_at: g.createdAt,
-        updated_at: g.updatedAt,
+        created_at: g.created_at,
+        updated_at: g.updated_at,
         last_played_at: g.lastPlayedAt ?? new Date(0),
       }));
 
@@ -81,21 +81,20 @@ export class DashboardService {
         last_played_at: oGames[0]?.last_played_at ?? new Date(0),
       };
 
-      const friends = await this.friendRepository.find({
-        where: { userId },
-      });
+      const friends = await this.friendRepository.find({ where: { userId } });
+
       const friendDtos: FriendDto[] = friends.map((f) => ({
         id: f.id,
         userId: f.userId,
-        friendId: f.friendId, // number
-        friend_since: f.friendSince ? f.friendSince.toISOString() : null,
-        created_at: f.createdAt.toISOString(),
-        updated_at: f.updatedAt.toISOString(),
+        friendId: f.friendId, // string(steamId)
+        friend_since: f.friend_since ? f.friend_since.toISOString() : null,
+        created_at: f.created_at.toISOString(),
+        updated_at: f.updated_at.toISOString(),
       }));
 
       const data: DashboardDataDto = {
         profile: {
-          steamid: user.steamId, // DashboardSteamProfile가 number로 변경됨
+          steamid: String(user.steamId), // DashboardSteamProfile.steamid는 string이어야 함
           personaName: user.personaName ?? 'Unknown',
           avatar: user.avatar ?? undefined,
         },

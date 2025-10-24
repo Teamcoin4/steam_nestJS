@@ -15,7 +15,7 @@ export class SteamController {
   // 전체 동기화
   @Post('sync/all')
   async syncAll(@Req() req: Request) {
-    const user = req.user as { id: number; steamId: number } | undefined;
+    const user = req.user as { id: number; steamId: string } | undefined;
     if (!user) throw new UnauthorizedException();
     // syncUserAll은 문자열 SteamID64를 기대합니다.
     return this.sync.syncUserAll(String(user.steamId), user.id);
@@ -24,7 +24,7 @@ export class SteamController {
   // 단일 게임 동기화
   @Post('sync/game/:appId')
   async syncGame(@Req() req: Request, @Param('appId') appIdParam: string) {
-    const user = req.user as { id: number; steamId: number } | undefined;
+    const user = req.user as { id: number; steamId: string } | undefined;
     if (!user) throw new UnauthorizedException();
     const appId = Number(appIdParam);
     if (!Number.isFinite(appId))
