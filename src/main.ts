@@ -4,14 +4,11 @@ import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 import { ValidationPipe } from '@nestjs/common';
 import { LoggerService } from './common/logger/logger.service';
-import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
   });
-
-  app.useGlobalGuards(new JwtAuthGuard());
 
   const logger = app.get(LoggerService);
   app.useLogger(logger);

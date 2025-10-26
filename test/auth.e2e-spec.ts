@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { SteamAuthController } from '../src/auth/auth.controller';
+import { AuthController } from '../src/auth/auth.controller';
 import { SteamOpenIdService } from '../src/auth/steam-openid.service';
 import { UsersRepository } from '../src/domain/users/users.repository';
 import { JwtModule } from '@nestjs/jwt';
@@ -121,10 +122,37 @@ const usersRepoMock: Pick<UsersRepository, 'upsertBySteamId'> = {
 } as unknown as UsersRepository;
 
 const ownedRepoMock: Partial<OwnedGameRepository> = {
-  fetchOwnedGamesAsRows: async () => {
-    // satisfy require-await
+  fetchOwnedGamesAsRows: async (
+    ..._args: Parameters<OwnedGameRepository['fetchOwnedGamesAsRows']>
+  ): Promise<
+    Awaited<ReturnType<OwnedGameRepository['fetchOwnedGamesAsRows']>>
+  > => {
+    void _args;
     await Promise.resolve();
-    return { games: [], owned: [] };
+    return {
+      games: [],
+      owned: [],
+    } as Awaited<ReturnType<OwnedGameRepository['fetchOwnedGamesAsRows']>>;
+  },
+
+  // upsertGames(user, rows)
+  upsertGames: async (
+    ..._args: Parameters<OwnedGameRepository['upsertGames']>
+  ): Promise<Awaited<ReturnType<OwnedGameRepository['upsertGames']>>> => {
+    void _args;
+    await Promise.resolve();
+    return undefined as Awaited<ReturnType<OwnedGameRepository['upsertGames']>>;
+  },
+
+  // upsertOwnedMany(user, rows)
+  upsertOwnedMany: async (
+    ..._args: Parameters<OwnedGameRepository['upsertOwnedMany']>
+  ): Promise<Awaited<ReturnType<OwnedGameRepository['upsertOwnedMany']>>> => {
+    void _args;
+    await Promise.resolve();
+    return undefined as Awaited<
+      ReturnType<OwnedGameRepository['upsertOwnedMany']>
+    >;
   },
 };
 
@@ -190,7 +218,7 @@ describe('Auth e2e flow', () => {
         JwtModule.register({}),
         CacheModule.register(), // ✅ 캐시 모듈 등록
       ],
-      controllers: [SteamAuthController],
+      controllers: [SteamAuthController, AuthController],
       providers: [
         SteamOpenIdService,
         { provide: REDIS, useValue: redis },
@@ -269,22 +297,13 @@ describe('Auth e2e flow', () => {
         'openid.sig': 'dummy',
         'openid.ns': 'http://specs.openid.net/auth/2.0',
       })
-      .expect(200);
-
-    type CallbackBody = {
-      tokenType: string;
-      accessToken: string;
-      user: {
-        id: number;
-        steamId: string;
-        personaName: string | null;
-        avatar: string | null;
-      };
-    };
-    const body = res.body as unknown as CallbackBody;
-    expect(body.tokenType).toBe('Bearer');
-    expect(typeof body.accessToken).toBe('string');
-    expect(body.user).toBeTruthy();
+      .expect(302);
+    expect(res.headers['location']).toContain('/dashboard');
+    const setCookie = res.get('set-cookie') as string[] | undefined;
+    const joined = Array.isArray(setCookie)
+      ? setCookie.join('\n')
+      : String(setCookie || '');
+    expect(joined).toMatch(/refresh_token=/);
   });
 
   it('3) POST /api/v1/auth/steam/refresh -> 200 rotate success', async () => {
@@ -319,7 +338,7 @@ describe('Auth e2e flow', () => {
         'openid.sig': 'dummy',
         'openid.ns': 'http://specs.openid.net/auth/2.0',
       })
-      .expect(200);
+      .expect(302);
 
     const rawSetCookie: unknown = cb.get('set-cookie');
     const cookie = firstCookie(rawSetCookie);

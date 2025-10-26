@@ -5,7 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { UsersModule } from 'src/domain/users/users.module';
-import { SteamAuthController } from './auth.controller';
+import { AuthController, SteamAuthController } from './auth.controller';
 import { JwtAccessStrategy } from './jwt-access.strategy';
 import { SteamOpenIdService } from './steam-openid.service';
 
@@ -46,7 +46,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     GameDomainModule,
     forwardRef(() => FriendsModule),
   ],
-  controllers: [SteamAuthController],
+  controllers: [SteamAuthController, AuthController],
   providers: [
     JwtAccessStrategy,
     SteamOpenIdService,

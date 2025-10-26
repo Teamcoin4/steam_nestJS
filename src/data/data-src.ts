@@ -23,6 +23,6 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_NAME!,
   // 최종적으로 필요한 모든 엔티티 목록
   entities: [User, Game, OwnedGame, Achievement, UserAchievement, Friend],
-  synchronize: false,
+  synchronize: true,
   migrations: [__dirname + '/../migration/*{.ts,.js}'],
 });

@@ -50,7 +50,7 @@ import { EtagInterceptor } from './common/interceptors/etag.interceptor';
       password: process.env.DB_PASS ?? process.env.DB_PASSWORD ?? '',
       database: process.env.DB_NAME,
       autoLoadEntities: true,
-      synchronize: false, // dev only
+      synchronize: true, // dev only
     }),
     // Monitoring Modules - 추가
     LoggerModule,

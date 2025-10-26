@@ -1,4 +1,3 @@
-// src/auth/steam/steam-auth.controller.ts
 import {
   Controller,
   Get,
@@ -8,22 +7,17 @@ import {
   Post,
   UnauthorizedException,
   HttpCode,
-  Inject,
   Body,
   BadRequestException,
 } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { SteamOpenIdService } from './steam-openid.service';
-import { UpsertService } from '../api/upsert.service';
-import { ConfigService } from '@nestjs/config';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
 
+/** -------- DTO & 런타임 가드 -------- */
 interface TestLoginDto {
   steamId: string;
 }
 
-// ===== Runtime type guards to avoid any/unsafe =====
 interface AuthUser {
   id: number;
   steamId: string;
@@ -42,6 +36,7 @@ interface RefreshRotateResult {
   refreshToken: string;
   refreshTokenMaxAgeMs: number;
 }
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
 }
@@ -65,7 +60,7 @@ function isRefreshRotateResult(v: unknown): v is RefreshRotateResult {
     typeof v.refreshTokenMaxAgeMs === 'number'
   );
 }
-// ================================================
+/** ---------------------------------- */
 
 @Controller('auth')
 export class AuthController {
@@ -91,11 +86,35 @@ export class AuthController {
       user: raw.user,
       tokenType: 'Bearer' as const,
       accessToken: raw.accessToken,
-      expiresIn: raw.accessTokenExpiresIn,
+      expiresIn: raw.accessTokenExpiresIn, // seconds
     };
+  }
+
+  @Post('logout')
+  @HttpCode(204)
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refresh = getCookie(req, 'refresh_token');
+    if (refresh) {
+      await this.steamOpenIdService.revokeRefreshToken(refresh);
+    }
+
+    const cookieOpts = {
+      path: '/api/v1',
+      httpOnly: true,
+      sameSite: 'lax' as const,
+      secure: false, // TODO: prod에서 true
+    };
+
+    res.clearCookie('refresh_token', cookieOpts);
+    res.clearCookie('access_token', cookieOpts);
+
+    res.clearCookie('refresh_token', { ...cookieOpts, path: '/' });
+    res.clearCookie('access_token', { ...cookieOpts, path: '/' });
+    return;
   }
 }
 
+/** 안전한 쿠키 추출 */
 function getCookie(req: Request, name: string): string | undefined {
   const cookies = req.cookies;
   if (!cookies || typeof cookies !== 'object') return undefined;
@@ -105,13 +124,9 @@ function getCookie(req: Request, name: string): string | undefined {
 
 @Controller('auth/steam')
 export class SteamAuthController {
-  constructor(
-    private readonly steam: SteamOpenIdService,
-    private readonly upsert: UpsertService,
-    private readonly config: ConfigService,
-    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
-  ) {}
+  constructor(private readonly steam: SteamOpenIdService) {}
 
+  // 스팀 로그인 페이지로 리다이렉트
   @Get()
   async start(@Res() res: Response): Promise<void> {
     const url = await this.steam.buildRedirectUrl();
@@ -119,65 +134,49 @@ export class SteamAuthController {
     return;
   }
 
+  // 스팀 콜백
   @Get('callback')
   async callback(
     @Query() query: Record<string, string>,
     @Res() res: Response,
   ): Promise<void> {
-    const rawUnknown: unknown = await this.steam.finalizeLogin(query);
-    if (!isAuthResult(rawUnknown)) {
-      throw new UnauthorizedException('Invalid steam callback response');
-    }
-    const raw = rawUnknown;
+    // 1) OpenID 검증 + 유저 upsert
+    const { user } = await this.steam.finalizeLogin(query);
 
-    // 🔥 토큰 확인 로그 추가
-    console.log(
-      '🔑 생성된 accessToken:',
-      raw.accessToken.substring(0, 50) + '...',
+    // 2) refresh 토큰 발급 → HttpOnly 쿠키
+    const { refreshToken, refreshMaxAgeMs } = await this.steam.issueTokens(
+      user.id,
+      { refresh: true },
     );
-    console.log('🔑 토큰 길이:', raw.accessToken.length);
 
-    // refresh_token 쿠키 세팅
-    res.cookie('refresh_token', raw.refreshToken, {
+    res.cookie('refresh_token', refreshToken, {
       httpOnly: true,
-      secure: false,
+      secure: false, // TODO: prod에서 true
       sameSite: 'lax',
-      maxAge: raw.refreshTokenMaxAgeMs,
-      path: '/api/v1',
-    });
-    // access_token도 쿠키로 세팅(가드에서 쿠키로 읽을 수 있게)
-    res.cookie('access_token', raw.accessToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: 'lax',
-      maxAge: raw.accessTokenExpiresIn * 1000,
+      maxAge: refreshMaxAgeMs,
       path: '/api/v1',
     });
 
-    console.log('🔍 전체 Query:', query);
-    console.log('🔍 redirect 값:', query.redirect);
-    console.log('🔍 redirect 타입:', typeof query.redirect);
-    console.log('🔍 조건 체크 결과:', query.redirect === 'frontend');
-
-    if (query.redirect === 'frontend') {
-      console.log('✅ 리다이렉트 실행!');
-      const frontendUrl =
-        this.config.get<string>('FRONTEND_BASE_URL') || 'http://localhost:3001';
-      const redirectUrl = `${frontendUrl}/dashboard`;
-      console.log('🔗 리다이렉트 URL:', redirectUrl.substring(0, 100) + '...'); // 🔥 추가
-      res.redirect(redirectUrl);
-      return;
-    }
-
-    res.json({
-      tokenType: 'Bearer',
-      accessToken: raw.accessToken,
-      expiresIn: raw.accessTokenExpiresIn,
-      user: raw.user,
-    });
+    // 3) 프론트로 리다이렉트
+    const FRONT = process.env.PUBLIC_WEB_ORIGIN ?? 'http://localhost:3001';
+    res.redirect(302, `${FRONT}/dashboard`);
     return;
   }
 
+  // refresh 쿠키로 access 토큰 발급
+  @Post('token')
+  async issueAccess(@Req() req: Request) {
+    const rt = getCookie(req, 'refresh_token');
+    if (!rt) return { error: 'NO_REFRESH' };
+
+    const userId = await this.steam.verifyRefreshAndGetUser(rt);
+    const { accessToken, accessExpSec } = await this.steam.issueTokens(userId, {
+      access: true,
+    });
+    return { tokenType: 'Bearer', accessToken, expiresIn: accessExpSec }; // seconds
+  }
+
+  // refresh 회전(rotate) + 새 access 반환
   @Post('refresh')
   @HttpCode(200)
   async refresh(
@@ -185,37 +184,32 @@ export class SteamAuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ tokenType: 'Bearer'; accessToken: string }> {
     const token = getCookie(req, 'refresh_token');
-    console.log('[refresh] received cookie:', token ? '✅ exists' : '❌ none');
     if (!token) throw new UnauthorizedException('no refresh cookie');
 
-    try {
-      const rawUnknown: unknown = await this.steam.rotateRefreshToken(token);
-      if (!isRefreshRotateResult(rawUnknown)) {
-        throw new UnauthorizedException('Invalid refresh response');
-      }
-      const raw = rawUnknown;
-      // 새 refresh_token 갱신 (API 경로로 제한)
-      res.cookie('refresh_token', raw.refreshToken, {
-        httpOnly: true,
-        secure: false,
-        sameSite: 'lax',
-        maxAge: raw.refreshTokenMaxAgeMs,
-        path: '/api/v1',
-      });
-      // access_token도 갱신 쿠키로 설정(옵션)
-      res.cookie('access_token', raw.accessToken, {
-        httpOnly: true,
-        secure: false,
-        sameSite: 'lax',
-        maxAge: 15 * 60 * 1000, // 서버 설정에 맞게 조정
-        path: '/api/v1',
-      });
-
-      console.log('[refresh] rotated -> access ok, new refresh cookie set');
-      return { tokenType: 'Bearer' as const, accessToken: raw.accessToken };
-    } catch (e) {
-      console.error('[refresh] rotate failed:', e);
-      throw e;
+    const rawUnknown: unknown = await this.steam.rotateRefreshToken(token);
+    if (!isRefreshRotateResult(rawUnknown)) {
+      throw new UnauthorizedException('Invalid refresh response');
     }
+    const raw = rawUnknown;
+
+    // 새 refresh_token 갱신 (API 경로로 제한)
+    res.cookie('refresh_token', raw.refreshToken, {
+      httpOnly: true,
+      secure: false, // TODO: prod에서 true
+      sameSite: 'lax',
+      maxAge: raw.refreshTokenMaxAgeMs,
+      path: '/api/v1',
+    });
+
+    // (선택) access_token도 쿠키로 설정
+    res.cookie('access_token', raw.accessToken, {
+      httpOnly: true,
+      secure: false, // TODO: prod에서 true
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000, // 서버 설정에 맞게 조정
+      path: '/api/v1',
+    });
+
+    return { tokenType: 'Bearer' as const, accessToken: raw.accessToken };
   }
 }
