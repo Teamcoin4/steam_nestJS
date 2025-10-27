@@ -79,7 +79,7 @@ export class FriendsController {
 
   // ✅ 2. 공통 게임 조회
   @Get(':steamid/common-games')
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
   async getCommonGames(
     @UserId() userId: string,
     @Param('steamid') friendSteamId: string,
@@ -94,6 +94,11 @@ export class FriendsController {
     )
     query: GetCommonGamesDto,
   ) {
+    console.log('✅ [Controller] 공통 게임 요청 도착');
+    console.log('👉 userId (토큰에서 추출):', userId);
+    console.log('👉 friendSteamId (URL):', friendSteamId);
+    console.log('👉 query:', query);
+
     const userIdNum = parseInt(userId, 10);
 
     // steamId로 User 조회
@@ -102,9 +107,14 @@ export class FriendsController {
       select: ['id'],
     });
 
+    console.log('✅ friendUser 조회 결과:', friendUser);
+
     if (!friendUser) {
+      console.log('❌ 친구를 DB에서 찾을 수 없음!');
       throw new NotFoundException('친구를 찾을 수 없습니다.');
     }
+
+    console.log('✅ 서비스 호출 시작');
 
     return this.friendsService.getCommonGames(userIdNum, friendUser.id, query);
   }
