@@ -6,32 +6,30 @@ import { ValidationPipe } from '@nestjs/common';
 import { LoggerService } from './common/logger/logger.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    bufferLogs: true,
-  });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   const logger = app.get(LoggerService);
   app.useLogger(logger);
-  // CORS 활성화
-  app.enableCors({
-    origin: 'http://localhost:3000',
-    credentials: true,
-  });
+
   app.setGlobalPrefix('api/v1');
 
-  // ✅ CORS 설정 강화 (쿠키 포함 + 프론트 3001 허용)
+  // ✅ any 없이, 여러 오리진 허용
+  const allowList = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    process.env.NEXT_PUBLIC_SITE_URL, // 배포 도메인 있으면
+  ].filter((v): v is string => Boolean(v));
+
   app.enableCors({
-    origin: 'http://localhost:3001', // 프론트엔드 주소
-    credentials: true, // 쿠키 전송 허용
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'], // 허용 메서드 명시
-    allowedHeaders: ['Content-Type', 'Authorization'], // 명시적으로 허용
-    exposedHeaders: ['Authorization'], // 클라이언트에서 접근 허용
+    origin: allowList, // ← 함수 말고 배열 사용
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Authorization'],
   });
 
-  // ✅ 쿠키 파서 (서명키 optional)
   app.use(cookieParser(process.env.COOKIE_SECRET));
 
-  // ✅ 유효성 파이프 전역 적용
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
@@ -52,7 +50,6 @@ async function bootstrap() {
     'Bootstrap',
   );
 }
-
 bootstrap().catch((err) => {
   console.error('Fatal bootstrap error:', err);
   process.exit(1);
