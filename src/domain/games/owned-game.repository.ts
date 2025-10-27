@@ -108,7 +108,12 @@ export class OwnedGameRepository {
   async listForUserQB(
     userId: number,
     opts: {
-      sort: 'playtimeForever' | 'playtime2Weeks' | 'gameId' | 'name';
+      sort:
+        | 'playtimeForever'
+        | 'playtime2Weeks'
+        | 'gameId'
+        | 'name'
+        | 'lastPlayedAt';
       order: 'asc' | 'desc';
       page: number;
       size: number;
@@ -136,6 +141,7 @@ export class OwnedGameRepository {
       playtime2Weeks: 'og.playtime2Weeks',
       gameId: 'og.gameId',
       playtimeForever: 'og.playtimeForever',
+      lastPlayedAt: 'og.lastPlayedAt',
     } as const;
 
     const sortExpr = SORT_MAP[opts.sort] ?? SORT_MAP.playtimeForever;
