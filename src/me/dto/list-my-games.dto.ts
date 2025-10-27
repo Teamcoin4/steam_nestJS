@@ -13,9 +13,13 @@ import { lowerCase, emptyToUndef, trimString } from 'src/common/transformers';
 
 export class ListMyGamesDto {
   @IsOptional()
-  @IsIn(['playtimeForever', 'playtime2Weeks', 'gameId', 'name'])
-  sort?: 'playtimeForever' | 'playtime2Weeks' | 'gameId' | 'name';
-
+  @IsIn(['playtimeForever', 'playtime2Weeks', 'gameId', 'name', 'lastPlayedAt'])
+  sort?:
+    | 'playtimeForever'
+    | 'playtime2Weeks'
+    | 'gameId'
+    | 'name'
+    | 'lastPlayedAt';
   @IsOptional()
   @Transform(lowerCase, { toClassOnly: true })
   @IsIn(['asc', 'desc'])
