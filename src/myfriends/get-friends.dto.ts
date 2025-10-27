@@ -73,6 +73,12 @@ export type FriendItem = {
   avatar: string | null;
   relationship: 'friend' | 'pending' | 'blocked';
   stats?: FriendStats;
+  // ✅ ↓ 여기부터 새롭게 확장된 상태 관련 필드
+  state?: string; // 예: 'online', 'offline', 'in_game'
+  in_game?: boolean; // 예: true or false
+  game_name?: string | null; // 예: 'Dota 2', 없으면 null
+  last_logoff?: string | null; // ISO 날짜 문자열 또는 null
+  // ✅ 기존 필드는 그대로 유지
   links: {
     profile: string;
     common_games: string;

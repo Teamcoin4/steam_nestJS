@@ -52,6 +52,9 @@ interface SteamPlayer {
   steamid: string;
   personaname?: string;
   avatarfull?: string;
+  personastate?: number; // ✅ 온라인 상태 코드
+  gameextrainfo?: string; // ✅ 게임 중일 때 게임 이름
+  lastlogoff?: number; // ✅ UNIX timestamp
 }
 
 interface SteamPlayerSummariesResponse {
@@ -193,13 +196,37 @@ export class FriendsService {
       // 9. 데이터 조회 (최적화: 이미 JOIN됨)
       const friends = await query.getMany();
 
+      // ✅ (A) 여기에서 friends의 steamid 수집
+      const steamIds = friends
+        .map((friend) => friend.friend?.steamId)
+        .filter((id): id is string => !!id);
+
+      // ✅ (B) Steam 상태 조회
+      const apiKey = process.env.STEAM_API_KEY;
+      if (!apiKey) {
+        throw new Error('STEAM_API_KEY is not set');
+      }
+
+      const summaryMap = await this.fetchSteamPlayerSummaries(apiKey, steamIds);
+
       // 10. 응답 구성
-      const items: FriendItem[] = friends.map((friend) =>
-        this.buildFriendItemSync(
+      const items: FriendItem[] = friends.map((friend) => {
+        const item = this.buildFriendItemSync(
           friend,
           includeStats ? statsMapForItems : null,
-        ),
-      );
+        );
+
+        // ✅ (C) 상태 필드 주입
+        const steamData = summaryMap.get(item.steamid);
+        if (steamData) {
+          item.state = steamData.state;
+          item.in_game = steamData.in_game;
+          item.game_name = steamData.game_name;
+          item.last_logoff = steamData.last_logoff;
+        }
+
+        return item;
+      });
 
       const response: FriendListResponse = {
         summary: {
@@ -218,7 +245,6 @@ export class FriendsService {
         },
         trace_id: traceId,
       };
-
       // 11. 캐시 저장 (최적화)
       if (!dto.force) {
         await this.saveFriendsToCache(userId, dto, response);
@@ -478,6 +504,77 @@ export class FriendsService {
       recent_overlap: recentOverlap,
       last_online_at: friendUser?.updated_at?.toISOString() ?? null,
     };
+  }
+
+  // ✅ Steam 친구 상태 조회 + 필드 변환용 메서드
+  private async fetchSteamPlayerSummaries(
+    steamApiKey: string,
+    steamIds: string[],
+  ) {
+    if (steamIds.length === 0) {
+      return new Map<
+        string,
+        {
+          state: string;
+          in_game: boolean;
+          game_name: string | null;
+          last_logoff: string | null;
+        }
+      >();
+    }
+
+    const { data } = await axios.get<SteamPlayerSummariesResponse>(
+      'https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/',
+      {
+        params: {
+          key: steamApiKey,
+          steamids: steamIds.join(','),
+        },
+      },
+    );
+
+    const players = data.response?.players ?? [];
+
+    const summaryMap = new Map<
+      string,
+      {
+        state: string;
+        in_game: boolean;
+        game_name: string | null;
+        last_logoff: string | null;
+      }
+    >();
+
+    const personaStateMap: Record<number, string> = {
+      0: 'offline',
+      1: 'online',
+      2: 'busy',
+      3: 'away',
+      4: 'snooze',
+      5: 'looking_to_trade',
+      6: 'looking_to_play',
+    };
+
+    players.forEach((player) => {
+      const numState = player.personastate ?? 0;
+      let state = personaStateMap[numState] || 'offline';
+
+      const inGame = Boolean(player.gameextrainfo);
+      if (inGame) {
+        state = 'in_game';
+      }
+
+      summaryMap.set(player.steamid, {
+        state,
+        in_game: inGame,
+        game_name: player.gameextrainfo ?? null,
+        last_logoff: player.lastlogoff
+          ? new Date(player.lastlogoff * 1000).toISOString()
+          : null,
+      });
+    });
+
+    return summaryMap;
   }
 
   private async calculateMutualOwnedOptimized(
