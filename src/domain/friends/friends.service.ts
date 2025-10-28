@@ -918,6 +918,11 @@ export class FriendsService {
     friendUserId: number,
     dto: GetCommonGamesDto,
   ): Promise<CommonGamesResponse> {
+    // ✅ 이 첫 부분에 아래 로그를 추가하면 됩니다.
+    console.log('✅ [Service] getCommonGames 호출됨');
+    console.log('👉 userIdNum:', userId);
+    console.log('👉 friendUserId:', friendUserId);
+    console.log('👉 dto:', dto);
     try {
       const traceId = `tr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
