@@ -25,6 +25,7 @@ import { CacheAsideModule } from './common/cache/cache-aside.module';
 import { RedisModule } from './infra/redis/redis.module';
 import { FriendsModule } from './domain/friends/friends.module';
 import { ExceptionModule } from './common/exceptions/exception.module';
+import { MessagesModule } from './message/messages.module';
 
 // Monitoring Modules - 추가
 import { LoggerModule } from './common/logger/logger.module';
@@ -55,7 +56,7 @@ import { EtagInterceptor } from './common/interceptors/etag.interceptor';
     // Monitoring Modules - 추가
     LoggerModule,
     MetricsModule,
-
+    MessagesModule,
     SteamModule,
     AuthModule,
     MeModule,
