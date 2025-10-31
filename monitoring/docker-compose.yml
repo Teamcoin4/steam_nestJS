@@ -23,11 +23,12 @@ services:
   loki:
     image: grafana/loki:latest
     container_name: loki
+    user: "0:0"   # ✅ 꼭 추가! (root 권한 실행)
     ports:
       - "3100:3100"
     volumes:
       - ./loki/loki-config.yml:/etc/loki/local-config.yaml
-      - loki-data:/loki
+      - monitoring_loki-data:/var/loki
     command: -config.file=/etc/loki/local-config.yaml
     networks:
       - monitoring
@@ -53,7 +54,7 @@ services:
     image: grafana/grafana:latest
     container_name: grafana
     ports:
-      - "3000:3000"
+      - "3030:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
@@ -86,7 +87,7 @@ services:
 
 volumes:
   prometheus-data:
-  loki-data:
+  monitoring_loki-data:
   tempo-data:
   grafana-data:
 
