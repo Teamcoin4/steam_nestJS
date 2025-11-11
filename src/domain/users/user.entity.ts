@@ -6,10 +6,12 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  OneToOne,
 } from 'typeorm';
 import { OwnedGame } from '../games/owned-game.entity';
 import { UserAchievement } from '../achievements/user-achievement.entity';
 import { Friend } from '../friends/friends.entity';
+import { UserSummary } from './user-summary.entity';
 
 @Entity('user')
 export class User {
@@ -48,4 +50,8 @@ export class User {
 
   @OneToMany(() => Friend, (f) => f.friend)
   friendOf?: Friend[];
+
+  // User → UserSummary 관계 추가
+  @OneToOne(() => UserSummary, (summary) => summary.user, { cascade: true })
+  summary?: UserSummary;
 }

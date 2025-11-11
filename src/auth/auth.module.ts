@@ -12,14 +12,13 @@ import { SteamOpenIdService } from './steam-openid.service';
 import { User } from '../domain/users/user.entity';
 import { OwnedGame } from '../domain/games/owned-game.entity';
 import { UsersRepository } from '../domain/users/users.repository';
-import { OwnedGameRepository } from '../domain/games/owned-game.repository';
-import { SteamApiModule } from '../api/steam.api.module';
 import { CacheAsideModule } from '../common/cache/cache-aside.module';
 import { RedisModule } from '../infra/redis/redis.module';
 import { MeModule } from '../me/me.module';
-import { GameDomainModule } from '../domain/games/game.module';
+import { GameModule } from '../domain/games/game.module';
 import { FriendsModule } from 'src/domain/friends/friends.module';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { ApiModule } from '../api/api.module';
 
 @Module({
   imports: [
@@ -37,13 +36,13 @@ import { JwtAuthGuard } from './jwt-auth.guard';
       }),
     }),
     TypeOrmModule.forFeature([User, OwnedGame]),
-    SteamApiModule, // to inject UpsertService
     CacheAsideModule, // CACHE_MANAGER, CacheAsideService
     RedisModule, // REDIS 클라이언트
     UsersModule,
     RedisModule,
     MeModule,
-    GameDomainModule,
+    forwardRef(() => GameModule),
+    ApiModule,
     forwardRef(() => FriendsModule),
   ],
   controllers: [SteamAuthController, AuthController],
@@ -51,14 +50,14 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     JwtAccessStrategy,
     SteamOpenIdService,
     UsersRepository,
-    OwnedGameRepository,
+    // OwnedGameRepository,
     JwtAuthGuard,
   ],
   exports: [
     JwtModule,
     PassportModule,
     SteamOpenIdService,
-    JwtAuthGuard, //  추가
+    JwtAuthGuard,
     PassportModule,
   ],
 })

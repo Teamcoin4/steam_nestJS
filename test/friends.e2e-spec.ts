@@ -106,8 +106,8 @@ const steamServiceMock: Pick<
 > = {
   getPlayerAchievements: jest.fn().mockResolvedValue({
     achievements: [
-      { apiname: 'ACH_WIN_1', achieved: 1, unlocktime: 1609459200 },
-      { apiname: 'ACH_WIN_10', achieved: 0, unlocktime: 0 },
+      { apiname: 'ACH_WIN_1', achieved: 1, unlockedAt: 1609459200 },
+      { apiname: 'ACH_WIN_10', achieved: 0, unlockedAt: 0 },
     ],
   }),
 
@@ -141,7 +141,7 @@ const steamServiceMock: Pick<
   getOwnedGames: jest.fn().mockResolvedValue({
     games: [
       {
-        appid: 570,
+        appId: 570,
         name: 'Dota 2',
         playtime_forever: 5000,
         playtime_2weeks: 100,
@@ -150,7 +150,7 @@ const steamServiceMock: Pick<
         has_community_visible_stats: true,
       },
       {
-        appid: 730,
+        appId: 730,
         name: 'Counter-Strike 2',
         playtime_forever: 3000,
         playtime_2weeks: 50,

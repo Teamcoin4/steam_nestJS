@@ -1,15 +1,17 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { CacheAsideModule } from 'src/common/cache/cache-aside.module';
-import { GameDomainModule } from 'src/domain/games/game.module';
+import { GameModule } from 'src/domain/games/game.module';
 import { UsersModule } from 'src/domain/users/users.module';
 import { MeController } from './me.controller';
 import { MeService } from './me.service';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { SteamModule } from '../steam/steam.module';
 
 @Module({
   imports: [
+    forwardRef(() => SteamModule), // ✅ SteamSyncService 제공 모듈 import
     UsersModule,
-    GameDomainModule,
+    GameModule,
     CacheAsideModule,
     ThrottlerModule.forRoot({
       throttlers: [
