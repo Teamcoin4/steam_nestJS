@@ -11,7 +11,7 @@ const API = 'https://api.steampowered.com';
 
 // 개별 게임 아이템 타입 (외부에서 쓰면 export)
 export type OwnedGame = {
-  appid: number;
+  appId: number;
   name?: string;
   playtime_forever: number;
   playtime_2weeks?: number;
@@ -24,7 +24,7 @@ export type OwnedGame = {
 export type PlayerAchievement = {
   apiname: string;
   achieved: 0 | 1;
-  unlocktime: number;
+  unlockedAt: number;
   name?: string;
   description?: string;
 };
@@ -159,7 +159,7 @@ export class SteamService {
       const { data } = await this.http.get<PlayerAchievementsResponse>(
         `/ISteamUserStats/GetPlayerAchievements/v1`,
         {
-          params: { key: this.key, steamid: String(steamId), appid: appId },
+          params: { key: this.key, steamid: String(steamId), appId: appId },
         },
       );
       const achievements = data.playerstats?.achievements ?? [];
@@ -179,7 +179,7 @@ export class SteamService {
       const { data } = await this.http.get<SchemaForGameResponse>(
         `/ISteamUserStats/GetSchemaForGame/v2/`,
         {
-          params: { key: this.key, appid: appId, l: 'korean' },
+          params: { key: this.key, appId: appId, l: 'korean' },
         },
       );
       return data.game;

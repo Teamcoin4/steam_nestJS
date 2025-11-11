@@ -1,3 +1,4 @@
+// domain/achievements/achievements.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Achievement } from './achievement.entity';
@@ -8,7 +9,7 @@ import { AchievementRepository } from '../../achievement/achievement.repository'
 
 @Module({
   imports: [TypeOrmModule.forFeature([Achievement, UserAchievement])],
-  exports: [TypeOrmModule],
+  exports: [AchievementRepository],
   providers: [AchievementService, AchievementRepository],
   controllers: [AchievementController],
 })

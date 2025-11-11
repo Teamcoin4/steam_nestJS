@@ -14,7 +14,7 @@ import { CacheAsideService } from './cache-aside.service';
         store: await redisStore({
           url: cfg.get<string>('REDIS_URL') ?? 'redis://localhost:6379',
         }),
-        ttl: 60_000,
+        ttl: 600,
       }),
     }),
   ],

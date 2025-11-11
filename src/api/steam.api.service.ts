@@ -1,34 +1,66 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import axios, { type AxiosInstance, type AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 
+// ✅ 공통 타입 정의
 type QueryParams = Record<string, string | number | boolean>;
+
+// 안전한 Axios 응답 타입
 type SafeAxiosResponse<T> = AxiosResponse<T, unknown, Record<string, unknown>>;
 
-// Strongly-typed Steam Web API responses
-export type OwnedGame = {
+// 🧱 Steam API 원시 응답 구조
+interface SteamOwnedGameRaw {
   appid: number;
-  name?: string;
+  name: string;
   playtime_forever?: number;
-  playtime_2weeks?: number;
   img_icon_url?: string;
   img_logo_url?: string;
-  has_community_visible_stats?: boolean;
-};
-interface OwnedGamesApiResponse {
-  response?: { game_count?: number; games?: OwnedGame[] };
 }
 
-export type SteamFriend = {
+interface OwnedGamesApiResponse {
+  response?: {
+    game_count?: number;
+    games?: SteamOwnedGameRaw[];
+  };
+}
+
+// Steam GetPlayerAchievements 응답 타입 정의
+export interface PlayerAchievement {
+  apiname: string;
+  achieved: 0 | 1;
+  unlockedAt?: number;
+}
+
+export interface PlayerStats {
+  gameName?: string;
+  steamID?: string;
+  achievements?: PlayerAchievement[];
+  success?: boolean;
+}
+
+export interface PlayerAchievementsApiResponse {
+  playerstats?: PlayerStats;
+}
+
+// 🎮 내부에서 사용하는 도메인 타입
+export interface OwnedGame {
+  appId: number;
+  name: string;
+  playtimeForever: number;
+  icon?: string | null;
+  logo?: string | null;
+}
+
+export interface SteamFriend {
   steamid: string;
   relationship: string;
   friend_since: number;
-};
+}
 
 interface FriendListApiResponse {
   friendslist?: { friends?: SteamFriend[] };
 }
 
-export type PlayerSummary = {
+export interface PlayerSummary {
   steamid: string;
   personaname?: string;
   profileurl?: string;
@@ -37,49 +69,44 @@ export type PlayerSummary = {
   avatarfull?: string;
   personastate?: number;
   lastlogoff?: number;
-};
+}
+
 interface PlayerSummariesApiResponse {
   response?: { players?: PlayerSummary[] };
 }
 
-export type AchievementSchema = {
+export interface AchievementSchema {
   name: string;
   displayName?: string;
   description?: string;
   hidden?: number; // 0 | 1
   icon?: string;
   icongray?: string;
-};
-export type GameSchema = {
+}
+
+export interface GameSchema {
   gameName?: string;
-  gameVersion?: string;
-  availableGameStats?: { achievements?: AchievementSchema[] };
-};
+  availableGameStats?: {
+    achievements?: AchievementSchema[];
+  };
+}
+
 interface SchemaForGameApiResponse {
   game?: GameSchema;
 }
 
-export type PlayerAchievement = {
-  apiname: string;
-  achieved: 0 | 1;
-  unlocktime?: number; // unix seconds
-};
-export type PlayerStats = {
-  gameName?: string;
-  steamID?: string;
-  achievements?: PlayerAchievement[];
-  success?: boolean;
-};
-interface PlayerAchievementsApiResponse {
-  playerstats?: PlayerStats;
+export interface GlobalAchievementPercent {
+  name: string;
+  percent: number;
 }
 
-export type GlobalAchievementPercent = { name: string; percent: number };
 interface GlobalAchievementPercentagesApiResponse {
-  achievementpercentages?: { achievements?: GlobalAchievementPercent[] };
+  achievementpercentages?: {
+    achievements?: GlobalAchievementPercent[];
+  };
 }
 
-// 에러 요약 헬퍼: unknown 안전 처리
+// 🧠 에러 요약 헬퍼
 function errorSummary(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const code = err.response?.status;
@@ -105,7 +132,6 @@ export class SteamApiService {
     return process.env.STEAM_API_KEY as string;
   }
 
-  // AxiosInstance 기반 호출: ESLint no-unsafe-* 경고 제거
   private async httpGet<T>(url: string, params: QueryParams): Promise<T> {
     const res: SafeAxiosResponse<T> = await this.client.get<
       T,
@@ -114,7 +140,8 @@ export class SteamApiService {
     return res.data;
   }
 
-  async getOwnedGames(steamId64: string) {
+  // ✅ appid → appId로 안전 변환 (null 방지)
+  async getOwnedGames(steamId64: string): Promise<OwnedGame[]> {
     const data = await this.httpGet<OwnedGamesApiResponse>(
       '/IPlayerService/GetOwnedGames/v0001',
       {
@@ -124,7 +151,22 @@ export class SteamApiService {
         include_played_free_games: 1,
       },
     );
-    return data.response?.games ?? [];
+
+    const games = data.response?.games ?? [];
+
+    // 🚧 appid가 없거나 잘못된 게임은 제외
+    return games
+      .filter(
+        (g): g is SteamOwnedGameRaw =>
+          typeof g.appid === 'number' && g.appid > 0 && !!g.name,
+      )
+      .map((g) => ({
+        appId: g.appid,
+        name: g.name,
+        playtimeForever: g.playtime_forever ?? 0,
+        icon: g.img_icon_url ?? null,
+        logo: g.img_logo_url ?? null,
+      }));
   }
 
   async getPlayerSummaries(steamIds: string[]): Promise<PlayerSummary[]> {
@@ -138,46 +180,9 @@ export class SteamApiService {
   async getSchemaForGame(appId: number): Promise<GameSchema> {
     const data = await this.httpGet<SchemaForGameApiResponse>(
       '/ISteamUserStats/GetSchemaForGame/v2',
-      { key: this.key, appid: appId },
+      { key: this.key, appId },
     );
     return data.game ?? {};
-  }
-
-  // 업적이 없거나 비공개(400/403/404)면 null 반환
-  async getPlayerAchievements(
-    appId: number,
-    steamId64: string,
-  ): Promise<PlayerAchievementsApiResponse | null> {
-    try {
-      const data = await this.httpGet<PlayerAchievementsApiResponse>(
-        '/ISteamUserStats/GetPlayerAchievements/v1',
-        { key: this.key, appid: appId, steamid: steamId64 },
-      );
-      return data;
-    } catch (err: unknown) {
-      if (axios.isAxiosError(err) && err.response) {
-        const code = err.response.status;
-        if (code === 400 || code === 403 || code === 404) return null;
-      }
-      throw new InternalServerErrorException(
-        `Steam GetPlayerAchievements failed: ${errorSummary(err)}`,
-      );
-    }
-  }
-
-  async getFriendList(steamId64: string) {
-    const data = await this.httpGet<FriendListApiResponse>(
-      '/ISteamUser/GetFriendList/v1',
-      { key: this.key, steamid: steamId64, relationship: 'friend' },
-    );
-    const arr = data.friendslist?.friends ?? [];
-    return arr.filter(
-      (f): f is SteamFriend =>
-        !!f &&
-        typeof f.steamid === 'string' &&
-        typeof f.relationship === 'string' &&
-        typeof f.friend_since === 'number',
-    );
   }
 
   async getGlobalAchievementPercentages(
@@ -188,5 +193,40 @@ export class SteamApiService {
       { gameid: appId },
     );
     return data.achievementpercentages?.achievements ?? [];
+  }
+
+  async getFriendList(steamId64: string): Promise<SteamFriend[]> {
+    const data = await this.httpGet<FriendListApiResponse>(
+      '/ISteamUser/GetFriendList/v1',
+      { key: this.key, steamid: steamId64, relationship: 'friend' },
+    );
+    const friends = data.friendslist?.friends ?? [];
+    return friends.filter(
+      (f): f is SteamFriend =>
+        !!f &&
+        typeof f.steamid === 'string' &&
+        typeof f.relationship === 'string' &&
+        typeof f.friend_since === 'number',
+    );
+  }
+
+  async getPlayerAchievements(
+    appId: number,
+    steamId64: string,
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.httpGet<Record<string, unknown>>(
+        '/ISteamUserStats/GetPlayerAchievements/v1',
+        { key: this.key, appId, steamid: steamId64 },
+      );
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response) {
+        const code = err.response.status;
+        if (code === 400 || code === 403 || code === 404) return null;
+      }
+      throw new InternalServerErrorException(
+        `Steam GetPlayerAchievements failed: ${errorSummary(err)}`,
+      );
+    }
   }
 }

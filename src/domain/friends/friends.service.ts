@@ -1064,7 +1064,7 @@ export class FriendsService {
 
   private findCommonGamesDetailed(
     userGames: Array<{
-      appid: number;
+      appId: number;
       name?: string;
       playtime_forever: number;
       playtime_2weeks?: number;
@@ -1072,7 +1072,7 @@ export class FriendsService {
       rtime_last_played?: number;
     }>,
     friendGames: Array<{
-      appid: number;
+      appId: number;
       name?: string;
       playtime_forever: number;
       playtime_2weeks?: number;
@@ -1081,22 +1081,22 @@ export class FriendsService {
     }>,
   ): CommonGame[] {
     const friendGamesMap = new Map(
-      friendGames.map((game) => [game.appid, game]),
+      friendGames.map((game) => [game.appId, game]),
     );
 
     const commonGames: CommonGame[] = [];
 
     for (const userGame of userGames) {
-      const friendGame = friendGamesMap.get(userGame.appid);
+      const friendGame = friendGamesMap.get(userGame.appId);
       if (friendGame) {
         const recentOverlap =
           (userGame.playtime_2weeks || 0) > 0 &&
           (friendGame.playtime_2weeks || 0) > 0;
 
         commonGames.push({
-          app_id: userGame.appid,
+          app_id: userGame.appId,
           name: userGame.name || 'Unknown Game',
-          icon: this.steamService.buildAppHeaderUrl(userGame.appid),
+          icon: this.steamService.buildAppHeaderUrl(userGame.appId),
           you: {
             playtime_forever: userGame.playtime_forever || 0,
             playtime_2weeks: userGame.playtime_2weeks,
@@ -1401,12 +1401,12 @@ export class FriendsService {
     userAchievements: Array<{
       apiname: string;
       achieved: number;
-      unlocktime: number;
+      unlockedAt: number;
     }>,
     friendAchievements: Array<{
       apiname: string;
       achieved: number;
-      unlocktime: number;
+      unlockedAt: number;
     }>,
     includeGlobal: boolean = false,
   ): ComparedAchievementDetail[] {
@@ -1445,14 +1445,14 @@ export class FriendsService {
         description: schemaAch.description || '',
         you: {
           unlocked: youUnlocked,
-          unlock_time: userAch?.unlocktime
-            ? new Date(userAch.unlocktime * 1000).toISOString()
+          unlock_time: userAch?.unlockedAt
+            ? new Date(userAch.unlockedAt * 1000).toISOString()
             : null,
         },
         friend: {
           unlocked: friendUnlocked,
-          unlock_time: friendAch?.unlocktime
-            ? new Date(friendAch.unlocktime * 1000).toISOString()
+          unlock_time: friendAch?.unlockedAt
+            ? new Date(friendAch.unlockedAt * 1000).toISOString()
             : null,
         },
         status,

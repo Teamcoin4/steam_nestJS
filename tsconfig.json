@@ -23,12 +23,12 @@
     "noImplicitAny": true,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "useUnknownInCatchVariables": true,
+    "useUnknownInCatchVariables": false,
     "typeRoots": ["./src/types", "./node_modules/@types"],
 
     "paths": {
       "src/*": ["src/*"]
     }
   },
-  "include": ["src", "test", "mocks"]
+  "include": ["src", "test", "mocks", "tracing.js"]
 }

@@ -140,10 +140,10 @@ export class SteamAuthController {
     @Query() query: Record<string, string>,
     @Res() res: Response,
   ): Promise<void> {
-    // 1) OpenID 검증 + 유저 upsert
+    // 1️⃣ Steam OpenID 검증 및 사용자 Upsert
     const { user } = await this.steam.finalizeLogin(query);
 
-    // 2) refresh 토큰 발급 → HttpOnly 쿠키
+    // 2️⃣ Refresh Token 발급 → HttpOnly 쿠키로 저장
     const { refreshToken, refreshMaxAgeMs } = await this.steam.issueTokens(
       user.id,
       { refresh: true },
@@ -151,16 +151,15 @@ export class SteamAuthController {
 
     res.cookie('refresh_token', refreshToken, {
       httpOnly: true,
-      secure: false, // TODO: prod에서 true
+      secure: false, // production에서는 true
       sameSite: 'lax',
       maxAge: refreshMaxAgeMs,
       path: '/api/v1',
     });
 
-    // 3) 프론트로 리다이렉트
+    // ✅ 3️⃣ 프론트엔드 콜백 페이지로 리다이렉트
     const FRONT = process.env.PUBLIC_WEB_ORIGIN ?? 'http://localhost:3001';
-    res.redirect(302, `${FRONT}/dashboard`);
-    return;
+    res.redirect(302, `${FRONT}/auth/steam/callback`);
   }
 
   // refresh 쿠키로 access 토큰 발급
